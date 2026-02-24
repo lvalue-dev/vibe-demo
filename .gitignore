@@ -1,0 +1,32 @@
+# Backend
+backend/build/
+backend/.gradle/
+backend/out/
+*.class
+*.jar
+!gradle-wrapper.jar
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Env
+.env
+.env.*
+!.env.example

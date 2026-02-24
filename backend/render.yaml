@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: stockguide-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_USERNAME
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://your-app.vercel.app
+      - key: JPA_DDL_AUTO
+        value: update
+    healthCheckPath: /actuator/health

@@ -1,0 +1,57 @@
+spring:
+  application:
+    name: stockguide
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/stockguide}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: public
+
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+      timeout: 2000ms
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000  # 5 minutes
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Seoul
+
+server:
+  port: ${PORT:8080}
+
+jwt:
+  secret: ${JWT_SECRET:stockguide-secret-key-change-in-production-minimum-256-bits}
+  expiration: 86400000  # 24 hours
+
+stock:
+  collector:
+    enabled: ${COLLECTOR_ENABLED:true}
+    cron: "0 */5 9-16 * * MON-FRI"  # Every 5 min, weekdays 9-16
+  cache:
+    price-ttl: 300          # 5 minutes
+    analysis-ttl: 900       # 15 minutes
+
+cors:
+  allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+logging:
+  level:
+    com.stockguide: DEBUG
+    org.springframework.security: INFO
