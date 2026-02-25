@@ -33,16 +33,34 @@ const CORS_PROXY_1 = 'https://api.allorigins.win/raw?url='
 const CORS_PROXY_2 = 'https://corsproxy.io/?'
 
 export const STOCK_INFO: Record<string, { name: string; market: string; sector: string }> = {
+  // ── KOSPI ──────────────────────────────────────────────────────────────────
   '005930.KS': { name: '삼성전자', market: 'KOSPI', sector: '반도체' },
   '000660.KS': { name: 'SK하이닉스', market: 'KOSPI', sector: '반도체' },
   '035420.KS': { name: 'NAVER', market: 'KOSPI', sector: 'IT' },
   '035720.KS': { name: '카카오', market: 'KOSPI', sector: 'IT' },
   '373220.KS': { name: 'LG에너지솔루션', market: 'KOSPI', sector: '전기차배터리' },
+  '005380.KS': { name: '현대자동차', market: 'KOSPI', sector: '자동차' },
+  '000270.KS': { name: '기아', market: 'KOSPI', sector: '자동차' },
+  '051910.KS': { name: 'LG화학', market: 'KOSPI', sector: '화학' },
+  '068270.KS': { name: '셀트리온', market: 'KOSPI', sector: '바이오' },
+  '066570.KS': { name: 'LG전자', market: 'KOSPI', sector: '전자' },
+  // ── NASDAQ ─────────────────────────────────────────────────────────────────
   'AAPL': { name: 'Apple', market: 'NASDAQ', sector: 'Technology' },
   'NVDA': { name: 'NVIDIA', market: 'NASDAQ', sector: 'Semiconductor' },
   'MSFT': { name: 'Microsoft', market: 'NASDAQ', sector: 'Technology' },
   'TSLA': { name: 'Tesla', market: 'NASDAQ', sector: 'EV' },
   'META': { name: 'Meta', market: 'NASDAQ', sector: 'Social Media' },
+  'GOOGL': { name: 'Alphabet', market: 'NASDAQ', sector: 'Technology' },
+  'AMZN': { name: 'Amazon', market: 'NASDAQ', sector: 'E-Commerce' },
+  'AMD': { name: 'AMD', market: 'NASDAQ', sector: 'Semiconductor' },
+  'NFLX': { name: 'Netflix', market: 'NASDAQ', sector: 'Streaming' },
+  // ── NYSE ───────────────────────────────────────────────────────────────────
+  'JPM': { name: 'JPMorgan Chase', market: 'NYSE', sector: 'Finance' },
+  'V': { name: 'Visa', market: 'NYSE', sector: 'Finance' },
+  'WMT': { name: 'Walmart', market: 'NYSE', sector: 'Retail' },
+  'JNJ': { name: 'Johnson & Johnson', market: 'NYSE', sector: 'Healthcare' },
+  'DIS': { name: 'Walt Disney', market: 'NYSE', sector: 'Entertainment' },
+  'BABA': { name: 'Alibaba', market: 'NYSE', sector: 'E-Commerce' },
 }
 
 export const REAL_SYMBOLS = Object.keys(STOCK_INFO)

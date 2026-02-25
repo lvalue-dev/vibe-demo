@@ -4,7 +4,7 @@ import { stockApi } from '../api/stockApi'
 import StockCard from '../components/stock/StockCard'
 import type { Recommendation } from '../types'
 
-const MARKETS = ['전체', 'KOSPI', 'KOSDAQ', 'NASDAQ', 'NYSE']
+const MARKETS = ['전체', 'KOSPI', 'NASDAQ', 'NYSE']
 const RECOMMENDATIONS: Array<{ label: string; value: Recommendation | 'ALL' }> = [
   { label: '전체', value: 'ALL' },
   { label: '강한 매수', value: 'STRONG_BUY' },
