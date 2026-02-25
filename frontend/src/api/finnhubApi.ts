@@ -1,22 +1,14 @@
 import type { StockListItem, StockDetail, PricePoint, Recommendation, RiskLevel } from '../types'
 import { getMockStockDetail, MOCK_STOCKS } from './mockData'
 
-const TOKEN = 'd6f9mipr01qvn4o2asb0d6f9mipr01qvn4o2asbg'
-const BASE = 'https://finnhub.io/api/v1'
+// ── Finnhub (US stocks) ──────────────────────────────────────────────────────
+const FH_TOKEN = 'd6f9mipr01qvn4o2asb0d6f9mipr01qvn4o2asbg'
+const FH_BASE = 'https://finnhub.io/api/v1'
 
-// Finnhub symbol mapping
-const SYMBOL_MAP: Record<string, string> = {
-  '005930.KS': 'KRX:005930',
-  '000660.KS': 'KRX:000660',
-  '035420.KS': 'KRX:035420',
-  '035720.KS': 'KRX:035720',
-  '373220.KS': 'KRX:373220',
-  'AAPL': 'AAPL',
-  'NVDA': 'NVDA',
-  'MSFT': 'MSFT',
-  'TSLA': 'TSLA',
-  'META': 'META',
-}
+// ── Yahoo Finance (Korean stocks) ────────────────────────────────────────────
+const YF_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart'
+
+const KOREAN_SYMBOLS = new Set(['005930.KS', '000660.KS', '035420.KS', '035720.KS', '373220.KS'])
 
 const STOCK_INFO: Record<string, { name: string; market: string; sector: string }> = {
   '005930.KS': { name: '삼성전자', market: 'KOSPI', sector: '반도체' },
@@ -33,58 +25,116 @@ const STOCK_INFO: Record<string, { name: string; market: string; sector: string 
 
 export const REAL_SYMBOLS = Object.keys(STOCK_INFO)
 
-interface FinnhubQuote {
-  c: number   // current price
-  d: number   // change
-  dp: number  // percent change
-  h: number   // high
-  l: number   // low
-  o: number   // open
-  pc: number  // previous close
-  t: number   // timestamp
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface NormalizedQuote {
+  currentPrice: number
+  prevClose: number
+  volume: number
 }
 
-interface FinnhubCandle {
-  c: number[]
-  h: number[]
-  l: number[]
-  o: number[]
-  s: string
-  t: number[]
-  v: number[]
+interface NormalizedCandle {
+  timestamps: number[]
+  closes: number[]
+  volumes: number[]
 }
 
-async function fetchQuote(symbol: string): Promise<FinnhubQuote | null> {
-  const fSym = SYMBOL_MAP[symbol]
-  if (!fSym) return null
+// ── Yahoo Finance fetchers ────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchYahoo(symbol: string, range: string, interval: string): Promise<any | null> {
   try {
-    const res = await fetch(`${BASE}/quote?symbol=${encodeURIComponent(fSym)}&token=${TOKEN}`)
+    const res = await fetch(
+      `${YF_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`,
+      { headers: { Accept: 'application/json' } }
+    )
     if (!res.ok) return null
-    const data: FinnhubQuote = await res.json()
-    if (!data.c || data.c === 0) return null
-    return data
+    const json = await res.json()
+    return json?.chart?.result?.[0] ?? null
   } catch {
     return null
   }
 }
 
-async function fetchCandles(symbol: string, resolution: string, days: number): Promise<FinnhubCandle | null> {
-  const fSym = SYMBOL_MAP[symbol]
-  if (!fSym) return null
+async function yfQuote(symbol: string): Promise<NormalizedQuote | null> {
+  const result = await fetchYahoo(symbol, '1d', '1d')
+  if (!result) return null
+  const price = result.meta?.regularMarketPrice
+  const prevClose = result.meta?.previousClose ?? result.meta?.chartPreviousClose
+  const volume = result.meta?.regularMarketVolume
+  if (!price || price === 0) return null
+  return { currentPrice: price, prevClose: prevClose ?? price, volume: volume ?? 0 }
+}
+
+async function yfCandles(symbol: string, range: string, interval: string): Promise<NormalizedCandle | null> {
+  const result = await fetchYahoo(symbol, range, interval)
+  if (!result?.timestamp) return null
+  const rawCloses: (number | null)[] = result.indicators?.quote?.[0]?.close ?? []
+  const rawVolumes: (number | null)[] = result.indicators?.quote?.[0]?.volume ?? []
+  const timestamps: number[] = []
+  const closes: number[] = []
+  const volumes: number[] = []
+  result.timestamp.forEach((ts: number, i: number) => {
+    const c = rawCloses[i]
+    if (c !== null && c !== undefined && c > 0) {
+      timestamps.push(ts)
+      closes.push(c)
+      volumes.push(rawVolumes[i] ?? 0)
+    }
+  })
+  if (closes.length === 0) return null
+  return { timestamps, closes, volumes }
+}
+
+// ── Finnhub fetchers ──────────────────────────────────────────────────────────
+
+async function fhQuote(symbol: string): Promise<NormalizedQuote | null> {
+  try {
+    const res = await fetch(`${FH_BASE}/quote?symbol=${encodeURIComponent(symbol)}&token=${FH_TOKEN}`)
+    if (!res.ok) return null
+    const d = await res.json()
+    if (!d.c || d.c === 0) return null
+    return { currentPrice: d.c, prevClose: d.pc, volume: 0 }
+  } catch {
+    return null
+  }
+}
+
+async function fhCandles(symbol: string, resolution: string, days: number): Promise<NormalizedCandle | null> {
   const to = Math.floor(Date.now() / 1000)
   const from = to - days * 24 * 60 * 60
   try {
     const res = await fetch(
-      `${BASE}/stock/candle?symbol=${encodeURIComponent(fSym)}&resolution=${resolution}&from=${from}&to=${to}&token=${TOKEN}`
+      `${FH_BASE}/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=${resolution}&from=${from}&to=${to}&token=${FH_TOKEN}`
     )
     if (!res.ok) return null
-    const data: FinnhubCandle = await res.json()
-    if (data.s !== 'ok' || !data.c?.length) return null
-    return data
+    const d = await res.json()
+    if (d.s !== 'ok' || !d.c?.length) return null
+    return { timestamps: d.t, closes: d.c, volumes: d.v }
   } catch {
     return null
   }
 }
+
+// ── Unified fetchers ──────────────────────────────────────────────────────────
+
+function getQuote(symbol: string): Promise<NormalizedQuote | null> {
+  return KOREAN_SYMBOLS.has(symbol) ? yfQuote(symbol) : fhQuote(symbol)
+}
+
+function getDailyCandles(symbol: string): Promise<NormalizedCandle | null> {
+  return KOREAN_SYMBOLS.has(symbol)
+    ? yfCandles(symbol, '35d', '1d')
+    : fhCandles(symbol, 'D', 35)
+}
+
+function getIntradayCandles(symbol: string): Promise<NormalizedCandle | null> {
+  return KOREAN_SYMBOLS.has(symbol)
+    ? yfCandles(symbol, '2d', '5m')
+    : fhCandles(symbol, '5', 2)
+}
+
+// ── Analysis engine ───────────────────────────────────────────────────────────
 
 function calcMA(prices: number[], period: number): number | null {
   if (prices.length < period) return null
@@ -162,19 +212,18 @@ function analyze(params: {
   return { score, recommendation, recommendationLabel, risk, riskLabel, reasons }
 }
 
+// ── Public API ────────────────────────────────────────────────────────────────
+
 export async function fetchRealStocks(): Promise<StockListItem[]> {
-  const results = await Promise.all(
+  return Promise.all(
     REAL_SYMBOLS.map(async (symbol): Promise<StockListItem> => {
       const mock = MOCK_STOCKS.find((s) => s.symbol === symbol)!
-      const [quote, candles] = await Promise.all([
-        fetchQuote(symbol),
-        fetchCandles(symbol, 'D', 35),
-      ])
+      const [quote, daily] = await Promise.all([getQuote(symbol), getDailyCandles(symbol)])
 
       if (!quote) return mock
 
-      const closes = candles?.c ?? []
-      const volumes = candles?.v ?? []
+      const closes = daily?.closes ?? []
+      const volumes = daily?.volumes ?? []
       const ma5 = calcMA(closes, 5)
       const ma20 = calcMA(closes, 20)
       const todayVol = volumes.length > 0 ? volumes[volumes.length - 1] : null
@@ -184,17 +233,18 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
           : null
       const volumeRatio = todayVol && prevAvgVol ? todayVol / prevAvgVol : null
       const volatility = calcVolatility(closes.slice(-10))
-      const priceChangeRate = quote.pc > 0 ? (quote.c - quote.pc) / quote.pc : 0
+      const priceChangeRate =
+        quote.prevClose > 0 ? (quote.currentPrice - quote.prevClose) / quote.prevClose : 0
 
-      const result = analyze({ currentPrice: quote.c, ma5, ma20, volumeRatio, priceChangeRate, volatility })
+      const result = analyze({ currentPrice: quote.currentPrice, ma5, ma20, volumeRatio, priceChangeRate, volatility })
 
       return {
         symbol,
         name: STOCK_INFO[symbol].name,
         market: STOCK_INFO[symbol].market,
-        currentPrice: quote.c,
+        currentPrice: quote.currentPrice,
         priceChangeRate,
-        volume: todayVol ?? mock.volume,
+        volume: quote.volume || todayVol || mock.volume,
         score: result.score,
         recommendation: result.recommendation,
         recommendationLabel: result.recommendationLabel,
@@ -204,23 +254,22 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
       }
     })
   )
-  return results
 }
 
 export async function fetchRealStockDetail(symbol: string): Promise<StockDetail> {
   const info = STOCK_INFO[symbol]
   if (!info) return getMockStockDetail(symbol)!
 
-  const [quote, dailyCandles, intradayCandles] = await Promise.all([
-    fetchQuote(symbol),
-    fetchCandles(symbol, 'D', 35),
-    fetchCandles(symbol, '5', 2),
+  const [quote, daily, intraday] = await Promise.all([
+    getQuote(symbol),
+    getDailyCandles(symbol),
+    getIntradayCandles(symbol),
   ])
 
   if (!quote) return getMockStockDetail(symbol)!
 
-  const closes = dailyCandles?.c ?? []
-  const volumes = dailyCandles?.v ?? []
+  const closes = daily?.closes ?? []
+  const volumes = daily?.volumes ?? []
   const ma5 = calcMA(closes, 5)
   const ma20 = calcMA(closes, 20)
   const todayVol = volumes.length > 0 ? volumes[volumes.length - 1] : null
@@ -230,19 +279,19 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
       : null
   const volumeRatio = todayVol && prevAvgVol ? todayVol / prevAvgVol : null
   const volatility = calcVolatility(closes.slice(-10))
-  const priceChangeRate = quote.pc > 0 ? (quote.c - quote.pc) / quote.pc : 0
+  const priceChangeRate =
+    quote.prevClose > 0 ? (quote.currentPrice - quote.prevClose) / quote.prevClose : 0
 
-  const result = analyze({ currentPrice: quote.c, ma5, ma20, volumeRatio, priceChangeRate, volatility })
+  const result = analyze({ currentPrice: quote.currentPrice, ma5, ma20, volumeRatio, priceChangeRate, volatility })
 
-  // Build chart from intraday candles, fall back to daily
   let chartData: PricePoint[]
-  if (intradayCandles && intradayCandles.c.length > 0) {
-    chartData = intradayCandles.t.map((ts, i) => {
+  if (intraday && intraday.closes.length > 0) {
+    chartData = intraday.timestamps.map((ts, i) => {
       const d = new Date(ts * 1000)
       return {
         time: `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
-        price: intradayCandles.c[i],
-        volume: intradayCandles.v[i],
+        price: intraday.closes[i],
+        volume: intraday.volumes[i],
       }
     })
   } else {
@@ -262,10 +311,10 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     name: info.name,
     market: info.market,
     sector: info.sector,
-    currentPrice: quote.c,
-    prevClose: quote.pc,
+    currentPrice: quote.currentPrice,
+    prevClose: quote.prevClose,
     priceChangeRate,
-    volume: todayVol ?? 0,
+    volume: quote.volume || todayVol || 0,
     score: result.score,
     recommendation: result.recommendation,
     recommendationLabel: result.recommendationLabel,
