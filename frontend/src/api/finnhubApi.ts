@@ -1,6 +1,6 @@
 import type { StockListItem, StockDetail, PricePoint, Recommendation, RiskLevel } from '../types'
 
-// ── sessionStorage cache (5분 TTL) ───────────────────────────────────────────
+// ── sessionStorage cache (5분 TTL, stale fallback 포함) ──────────────────────
 const CACHE_TTL = 5 * 60 * 1000
 
 function getCached<T>(key: string): T | null {
@@ -8,7 +8,17 @@ function getCached<T>(key: string): T | null {
     const raw = sessionStorage.getItem(key)
     if (!raw) return null
     const { data, ts } = JSON.parse(raw) as { data: T; ts: number }
-    if (Date.now() - ts > CACHE_TTL) { sessionStorage.removeItem(key); return null }
+    if (Date.now() - ts > CACHE_TTL) return null  // 만료됐지만 삭제 않음 (stale fallback 용)
+    return data
+  } catch { return null }
+}
+
+// TTL 만료 여부 무시하고 마지막 성공 데이터 반환 (API 실패 시 fallback)
+function getStaleCached<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return null
+    const { data } = JSON.parse(raw) as { data: T; ts: number }
     return data
   } catch { return null }
 }
@@ -19,7 +29,8 @@ function setCache<T>(key: string, data: T): void {
 
 // ── Yahoo Finance (전 종목) ───────────────────────────────────────────────────
 const YF_BASE = 'https://query2.finance.yahoo.com/v8/finance/chart'
-const CORS_PROXY = 'https://api.allorigins.win/raw?url='
+const CORS_PROXY_1 = 'https://api.allorigins.win/raw?url='
+const CORS_PROXY_2 = 'https://corsproxy.io/?'
 
 export const STOCK_INFO: Record<string, { name: string; market: string; sector: string }> = {
   '005930.KS': { name: '삼성전자', market: 'KOSPI', sector: '반도체' },
@@ -39,7 +50,7 @@ export const REAL_SYMBOLS = Object.keys(STOCK_INFO)
 interface NormalizedQuote { currentPrice: number; prevClose: number; volume: number }
 interface NormalizedCandle { timestamps: number[]; closes: number[]; volumes: number[] }
 
-// ── Yahoo Finance fetcher: 직접 + 프록시 동시 경쟁 ──────────────────────────
+// ── Yahoo Finance fetcher: 직접 + 프록시 2개 동시 경쟁 ─────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchYahoo(symbol: string, range: string, interval: string): Promise<any | null> {
   const url = `${YF_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`
@@ -62,11 +73,21 @@ async function fetchYahoo(symbol: string, range: string, interval: string): Prom
     return null
   })()
 
-  // 프록시 요청 (200ms 후 시작 — 직접에 우선권)
-  const proxy = (async () => {
+  // 프록시1: allorigins.win (200ms 후 시작)
+  const proxy1 = (async () => {
     await new Promise(r => setTimeout(r, 200))
     try {
-      const res = await fetch(`${CORS_PROXY}${encodeURIComponent(url)}`)
+      const res = await fetch(`${CORS_PROXY_1}${encodeURIComponent(url)}`)
+      if (res.ok) return parseResult(await res.json())
+    } catch { /* ignore */ }
+    return null
+  })()
+
+  // 프록시2: corsproxy.io (400ms 후 시작 — 두 번째 백업)
+  const proxy2 = (async () => {
+    await new Promise(r => setTimeout(r, 400))
+    try {
+      const res = await fetch(`${CORS_PROXY_2}${encodeURIComponent(url)}`)
       if (res.ok) return parseResult(await res.json())
     } catch { /* ignore */ }
     return null
@@ -75,13 +96,14 @@ async function fetchYahoo(symbol: string, range: string, interval: string): Prom
   // 먼저 non-null 결과를 반환한 쪽 사용
   return new Promise<unknown>(resolve => {
     let settled = false
-    let pending = 2
+    let pending = 3
     const done = (val: unknown) => {
       if (val && !settled) { settled = true; resolve(val) }
       if (--pending === 0 && !settled) resolve(null)
     }
     direct.then(done)
-    proxy.then(done)
+    proxy1.then(done)
+    proxy2.then(done)
   })
 }
 
@@ -203,7 +225,12 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
   )
 
   const valid = results.filter((r): r is StockListItem => r !== null)
-  if (valid.length === 0) throw new Error('주식 데이터를 불러올 수 없습니다')
+  if (valid.length === 0) {
+    // 실패 시 만료된 캐시라도 반환 (rate limit / 네트워크 오류 대응)
+    const stale = getStaleCached<StockListItem[]>('stocks_list')
+    if (stale) return stale
+    throw new Error('주식 데이터를 불러올 수 없습니다')
+  }
   setCache('stocks_list', valid)
   return valid
 }
@@ -221,7 +248,11 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     yfCandles(symbol, '2d', '5m'),
   ])
 
-  if (!quote) throw new Error('주식 데이터를 불러올 수 없습니다')
+  if (!quote) {
+    const stale = getStaleCached<StockDetail>(`stock_${symbol}`)
+    if (stale) return stale
+    throw new Error('주식 데이터를 불러올 수 없습니다')
+  }
 
   const closes = daily?.closes ?? []
   const volumes = daily?.volumes ?? []

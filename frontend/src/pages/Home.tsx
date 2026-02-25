@@ -21,7 +21,9 @@ export default function Home() {
   const { data: stocks = [], isLoading, isError } = useQuery({
     queryKey: ['stocks'],
     queryFn: stockApi.getAll,
-    refetchInterval: 60_000,
+    staleTime: 5 * 60 * 1000,      // 5분 이내에는 refetch 안 함
+    refetchInterval: 5 * 60 * 1000, // 5분마다만 자동 갱신
+    retry: 1,
   })
 
   const filtered = useMemo(() => {
