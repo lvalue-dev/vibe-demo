@@ -1,7 +1,7 @@
 import type { StockListItem, StockDetail, PricePoint, Recommendation, RiskLevel } from '../types'
 
 // ── sessionStorage cache (5분 TTL, stale fallback 포함) ──────────────────────
-const CACHE_TTL = 5 * 60 * 1000
+const CACHE_TTL = 60 * 1000  // 1분
 
 function getCached<T>(key: string): T | null {
   try {

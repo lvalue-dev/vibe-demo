@@ -4,6 +4,12 @@ import { stockApi } from '../api/stockApi'
 import StockCard from '../components/stock/StockCard'
 import type { Recommendation } from '../types'
 
+function formatTime(ms: number) {
+  if (!ms) return null
+  const d = new Date(ms)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+}
+
 const MARKETS = ['전체', 'KOSPI', 'NASDAQ', 'NYSE']
 const RECOMMENDATIONS: Array<{ label: string; value: Recommendation | 'ALL' }> = [
   { label: '전체', value: 'ALL' },
@@ -18,11 +24,11 @@ export default function Home() {
   const [rec, setRec] = useState<Recommendation | 'ALL'>('ALL')
   const [search, setSearch] = useState('')
 
-  const { data: stocks = [], isLoading, isError } = useQuery({
+  const { data: stocks = [], isLoading, isError, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['stocks'],
     queryFn: stockApi.getAll,
-    staleTime: 5 * 60 * 1000,      // 5분 이내에는 refetch 안 함
-    refetchInterval: 5 * 60 * 1000, // 5분마다만 자동 갱신
+    staleTime: 30 * 1000,      // 30초 후 stale
+    refetchInterval: 30 * 1000, // 30초마다 자동 갱신
     retry: 1,
   })
 
@@ -91,6 +97,17 @@ export default function Home() {
           데이터 불러오는 중...
         </div>
       )}
+      {!isLoading && (
+        <div className="flex items-center gap-2 mb-3">
+          {isFetching
+            ? <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+            : <span className="inline-block w-2 h-2 rounded-full bg-green-400" />}
+          <p className="text-xs text-gray-400">
+            {isFetching ? '데이터 갱신 중...' : `마지막 업데이트: ${formatTime(dataUpdatedAt) ?? '-'}`}
+            &nbsp;·&nbsp;30초마다 자동 갱신
+          </p>
+        </div>
+      )}
       {isError && (
         <div className="text-center py-16 text-red-400">
           <div className="text-3xl mb-2">⚠️</div>
@@ -99,7 +116,7 @@ export default function Home() {
       )}
       {!isLoading && !isError && (
         <>
-          <p className="text-xs text-gray-400 mb-3">{filtered.length}개 종목</p>
+          <p className="text-xs text-gray-400 mb-3">{filtered.length}개 종목 표시 중</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((stock) => (
               <StockCard key={stock.symbol} stock={stock} />
