@@ -10,7 +10,7 @@ function formatTime(ms: number) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
 }
 
-const MARKETS = ['전체', 'KOSPI', 'NASDAQ', 'NYSE']
+const MARKETS = ['전체', 'KOSPI', 'KOSDAQ', 'NASDAQ', 'NYSE']
 const RECOMMENDATIONS: Array<{ label: string; value: Recommendation | 'ALL' }> = [
   { label: '전체', value: 'ALL' },
   { label: '강한 매수', value: 'STRONG_BUY' },
