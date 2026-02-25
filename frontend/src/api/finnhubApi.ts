@@ -6,7 +6,10 @@ const FH_TOKEN = 'd6f9mipr01qvn4o2asb0d6f9mipr01qvn4o2asbg'
 const FH_BASE = 'https://finnhub.io/api/v1'
 
 // ── Yahoo Finance (Korean stocks) ────────────────────────────────────────────
-const YF_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart'
+// query2 has more permissive CORS than query1
+const YF_BASE = 'https://query2.finance.yahoo.com/v8/finance/chart'
+// CORS proxy fallback when direct call is blocked
+const CORS_PROXY = 'https://api.allorigins.win/raw?url='
 
 const KOREAN_SYMBOLS = new Set(['005930.KS', '000660.KS', '035420.KS', '035720.KS', '373220.KS'])
 
@@ -43,17 +46,29 @@ interface NormalizedCandle {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchYahoo(symbol: string, range: string, interval: string): Promise<any | null> {
+  const url = `${YF_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`
+
+  // 1) Direct request (works if Yahoo Finance allows CORS for this origin)
   try {
-    const res = await fetch(
-      `${YF_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`,
-      { headers: { Accept: 'application/json' } }
-    )
-    if (!res.ok) return null
-    const json = await res.json()
-    return json?.chart?.result?.[0] ?? null
-  } catch {
-    return null
-  }
+    const res = await fetch(url, { headers: { Accept: 'application/json' } })
+    if (res.ok) {
+      const json = await res.json()
+      const result = json?.chart?.result?.[0]
+      if (result) return result
+    }
+  } catch { /* fall through to proxy */ }
+
+  // 2) CORS proxy fallback
+  try {
+    const res = await fetch(`${CORS_PROXY}${encodeURIComponent(url)}`)
+    if (res.ok) {
+      const json = await res.json()
+      const result = json?.chart?.result?.[0]
+      if (result) return result
+    }
+  } catch { /* fall through */ }
+
+  return null
 }
 
 async function yfQuote(symbol: string): Promise<NormalizedQuote | null> {
