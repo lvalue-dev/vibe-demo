@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import type { StockListItem } from '../../types'
-import { formatChange, formatPrice } from '../../utils/format'
+import { formatChange, formatPriceWithCurrency } from '../../utils/format'
 import RecommendationBadge from '../common/RecommendationBadge'
 import RiskBadge from '../common/RiskBadge'
 import ScoreBar from '../common/ScoreBar'
@@ -32,7 +32,9 @@ export default function StockCard({ stock }: Props) {
       </div>
 
       <div className="flex items-baseline gap-2 mb-3">
-        <span className="text-xl font-bold text-gray-900">₩{formatPrice(stock.currentPrice)}</span>
+        <span className="text-xl font-bold text-gray-900">
+          {formatPriceWithCurrency(stock.currentPrice, stock.market)}
+        </span>
         <span className={`text-sm font-semibold ${isUp ? 'text-green-600' : 'text-red-500'}`}>
           {formatChange(stock.priceChangeRate)}
         </span>

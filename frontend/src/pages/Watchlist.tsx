@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { watchlistApi } from '../api/stockApi'
 import RecommendationBadge from '../components/common/RecommendationBadge'
 import ScoreBar from '../components/common/ScoreBar'
-import { formatChange, formatPrice } from '../utils/format'
+import { formatChange, formatPriceWithCurrency } from '../utils/format'
 
 export default function Watchlist() {
   const navigate = useNavigate()
@@ -62,7 +62,7 @@ export default function Watchlist() {
                     <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{item.market}</span>
                   </div>
                   <div className="flex items-baseline gap-2 mb-2">
-                    <span className="text-lg font-bold text-gray-900">₩{formatPrice(item.currentPrice)}</span>
+                    <span className="text-lg font-bold text-gray-900">{formatPriceWithCurrency(item.currentPrice, item.market)}</span>
                     <span className={`text-sm font-semibold ${isUp ? 'text-green-600' : 'text-red-500'}`}>
                       {formatChange(item.priceChangeRate)}
                     </span>

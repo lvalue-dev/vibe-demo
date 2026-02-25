@@ -1,5 +1,4 @@
 import type { StockListItem, StockDetail, PricePoint, Recommendation, RiskLevel } from '../types'
-import { getMockStockDetail, MOCK_STOCKS } from './mockData'
 
 // ── sessionStorage cache (5분 TTL) ───────────────────────────────────────────
 const CACHE_TTL = 5 * 60 * 1000
@@ -23,14 +22,12 @@ const FH_TOKEN = 'd6f9mipr01qvn4o2asb0d6f9mipr01qvn4o2asbg'
 const FH_BASE = 'https://finnhub.io/api/v1'
 
 // ── Yahoo Finance (Korean stocks) ────────────────────────────────────────────
-// query2 has more permissive CORS than query1
 const YF_BASE = 'https://query2.finance.yahoo.com/v8/finance/chart'
-// CORS proxy fallback when direct call is blocked
 const CORS_PROXY = 'https://api.allorigins.win/raw?url='
 
 const KOREAN_SYMBOLS = new Set(['005930.KS', '000660.KS', '035420.KS', '035720.KS', '373220.KS'])
 
-const STOCK_INFO: Record<string, { name: string; market: string; sector: string }> = {
+export const STOCK_INFO: Record<string, { name: string; market: string; sector: string }> = {
   '005930.KS': { name: '삼성전자', market: 'KOSPI', sector: '반도체' },
   '000660.KS': { name: 'SK하이닉스', market: 'KOSPI', sector: '반도체' },
   '035420.KS': { name: 'NAVER', market: 'KOSPI', sector: 'IT' },
@@ -65,7 +62,7 @@ interface NormalizedCandle {
 async function fetchYahoo(symbol: string, range: string, interval: string): Promise<any | null> {
   const url = `${YF_BASE}/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`
 
-  // 1) Direct request (works if Yahoo Finance allows CORS for this origin)
+  // 1) Direct request
   try {
     const res = await fetch(url, { headers: { Accept: 'application/json' } })
     if (res.ok) {
@@ -250,12 +247,10 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
   const cached = getCached<StockListItem[]>('stocks_list')
   if (cached) return cached
 
-  const result = await Promise.all(
-    REAL_SYMBOLS.map(async (symbol): Promise<StockListItem> => {
-      const mock = MOCK_STOCKS.find((s) => s.symbol === symbol)!
+  const results = await Promise.all(
+    REAL_SYMBOLS.map(async (symbol): Promise<StockListItem | null> => {
       const [quote, daily] = await Promise.all([getQuote(symbol), getDailyCandles(symbol)])
-
-      if (!quote) return mock
+      if (!quote) return null  // 실데이터 없으면 제외 (mock 폴백 없음)
 
       const closes = daily?.closes ?? []
       const volumes = daily?.volumes ?? []
@@ -279,7 +274,7 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
         market: STOCK_INFO[symbol].market,
         currentPrice: quote.currentPrice,
         priceChangeRate,
-        volume: quote.volume || todayVol || mock.volume,
+        volume: quote.volume || todayVol || 0,
         score: result.score,
         recommendation: result.recommendation,
         recommendationLabel: result.recommendationLabel,
@@ -289,8 +284,11 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
       }
     })
   )
-  setCache('stocks_list', result)
-  return result
+
+  const valid = results.filter((r): r is StockListItem => r !== null)
+  if (valid.length === 0) throw new Error('주식 데이터를 불러올 수 없습니다')
+  setCache('stocks_list', valid)
+  return valid
 }
 
 export async function fetchRealStockDetail(symbol: string): Promise<StockDetail> {
@@ -298,7 +296,7 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
   if (cached) return cached
 
   const info = STOCK_INFO[symbol]
-  if (!info) return getMockStockDetail(symbol)!
+  if (!info) throw new Error('지원하지 않는 종목입니다')
 
   const [quote, daily, intraday] = await Promise.all([
     getQuote(symbol),
@@ -306,7 +304,7 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     getIntradayCandles(symbol),
   ])
 
-  if (!quote) return getMockStockDetail(symbol)!
+  if (!quote) throw new Error('주식 데이터를 불러올 수 없습니다')
 
   const closes = daily?.closes ?? []
   const volumes = daily?.volumes ?? []

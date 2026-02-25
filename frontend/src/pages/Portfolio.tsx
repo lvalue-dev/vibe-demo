@@ -3,7 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { portfolioApi } from '../api/stockApi'
 import RecommendationBadge from '../components/common/RecommendationBadge'
-import { formatPrice, formatReturnRate } from '../utils/format'
+import { formatPriceWithCurrency, formatReturnRate } from '../utils/format'
+
+function isSameCurrency(markets: string[]): 'KRW' | 'USD' | 'mixed' {
+  const korean = markets.filter((m) => m === 'KOSPI' || m === 'KOSDAQ')
+  if (korean.length === markets.length) return 'KRW'
+  if (korean.length === 0) return 'USD'
+  return 'mixed'
+}
 
 export default function Portfolio() {
   const navigate = useNavigate()
@@ -26,8 +33,8 @@ export default function Portfolio() {
       setShowForm(false)
       setForm({ symbol: '', avgPrice: '', quantity: '' })
     },
-    onError: (e: { response?: { data?: { error?: string } } }) => {
-      setFormError(e.response?.data?.error || '추가에 실패했습니다.')
+    onError: (e: { message?: string; response?: { data?: { error?: string } } }) => {
+      setFormError(e.message || e.response?.data?.error || '추가에 실패했습니다.')
     },
   })
 
@@ -40,6 +47,8 @@ export default function Portfolio() {
   const currentValue = items.reduce((sum, i) => sum + i.currentValue, 0)
   const totalPL = currentValue - totalInvested
   const totalReturn = totalInvested > 0 ? totalPL / totalInvested : 0
+  const currencyType = isSameCurrency(items.map((i) => i.market))
+  const summaryMarket = currencyType === 'KRW' ? 'KOSPI' : currencyType === 'USD' ? 'NASDAQ' : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,15 +77,24 @@ export default function Portfolio() {
       {/* Summary Card */}
       {items.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
-          <h2 className="text-sm font-medium text-gray-500 mb-3">총 평가</h2>
+          <h2 className="text-sm font-medium text-gray-500 mb-3">
+            총 평가
+            {currencyType === 'mixed' && (
+              <span className="ml-2 text-xs text-amber-500">원·달러 혼합</span>
+            )}
+          </h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-gray-400 mb-0.5">투자 원금</p>
-              <p className="font-bold text-gray-800">₩{formatPrice(totalInvested)}</p>
+              <p className="font-bold text-gray-800">
+                {summaryMarket ? formatPriceWithCurrency(totalInvested, summaryMarket) : totalInvested.toLocaleString()}
+              </p>
             </div>
             <div>
               <p className="text-xs text-gray-400 mb-0.5">평가 금액</p>
-              <p className="font-bold text-gray-800">₩{formatPrice(currentValue)}</p>
+              <p className="font-bold text-gray-800">
+                {summaryMarket ? formatPriceWithCurrency(currentValue, summaryMarket) : currentValue.toLocaleString()}
+              </p>
             </div>
             <div>
               <p className="text-xs text-gray-400 mb-0.5">수익률</p>
@@ -84,7 +102,10 @@ export default function Portfolio() {
                 {formatReturnRate(totalReturn)}
               </p>
               <p className={`text-xs ${totalPL >= 0 ? 'text-green-500' : 'text-red-400'}`}>
-                {totalPL >= 0 ? '+' : ''}₩{formatPrice(Math.abs(totalPL))}
+                {totalPL >= 0 ? '+' : ''}
+                {summaryMarket
+                  ? formatPriceWithCurrency(Math.abs(totalPL), summaryMarket)
+                  : Math.abs(totalPL).toLocaleString()}
               </p>
             </div>
           </div>
@@ -100,7 +121,7 @@ export default function Portfolio() {
               <label className="text-xs text-gray-600 block mb-1">심볼</label>
               <input
                 type="text"
-                placeholder="예: 005930.KS"
+                placeholder="예: AAPL, 005930.KS"
                 value={form.symbol}
                 onChange={(e) => setForm({ ...form, symbol: e.target.value })}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
@@ -180,7 +201,7 @@ export default function Portfolio() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">평균단가</p>
-                    <p className="font-medium text-gray-700">₩{formatPrice(item.avgPrice)}</p>
+                    <p className="font-medium text-gray-700">{formatPriceWithCurrency(item.avgPrice, item.market)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">수량</p>
@@ -188,7 +209,7 @@ export default function Portfolio() {
                   </div>
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">현재가</p>
-                    <p className="font-medium text-gray-700">₩{formatPrice(item.currentPrice)}</p>
+                    <p className="font-medium text-gray-700">{formatPriceWithCurrency(item.currentPrice, item.market)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">수익률</p>

@@ -6,7 +6,7 @@ import RecommendationBadge from '../components/common/RecommendationBadge'
 import RiskBadge from '../components/common/RiskBadge'
 import ScoreBar from '../components/common/ScoreBar'
 import { useAuthStore } from '../store/authStore'
-import { formatChange, formatPrice, formatVolume, RECOMMENDATION_COLORS } from '../utils/format'
+import { formatChange, formatPriceWithCurrency, formatVolume, RECOMMENDATION_COLORS } from '../utils/format'
 
 export default function StockDetail() {
   const { symbol } = useParams<{ symbol: string }>()
@@ -94,7 +94,7 @@ export default function StockDetail() {
         </div>
 
         <div className="flex items-baseline gap-3 mt-4">
-          <span className="text-3xl font-bold text-gray-900">₩{formatPrice(stock.currentPrice)}</span>
+          <span className="text-3xl font-bold text-gray-900">{formatPriceWithCurrency(stock.currentPrice, stock.market)}</span>
           <span className={`text-lg font-semibold ${isUp ? 'text-green-600' : 'text-red-500'}`}>
             {formatChange(stock.priceChangeRate)}
           </span>
@@ -102,7 +102,7 @@ export default function StockDetail() {
 
         <div className="flex gap-4 mt-2 text-sm text-gray-500">
           <span>거래량: {formatVolume(stock.volume)}</span>
-          {stock.prevClose && <span>전일종가: ₩{formatPrice(stock.prevClose)}</span>}
+          {stock.prevClose && <span>전일종가: {formatPriceWithCurrency(stock.prevClose, stock.market)}</span>}
         </div>
       </div>
 
@@ -158,8 +158,8 @@ export default function StockDetail() {
         <h2 className="text-base font-bold text-gray-800 mb-3">기술 지표</h2>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: 'MA5 (5일 이동평균)', value: stock.ma5 ? `₩${formatPrice(stock.ma5)}` : '-' },
-            { label: 'MA20 (20일 이동평균)', value: stock.ma20 ? `₩${formatPrice(stock.ma20)}` : '-' },
+            { label: 'MA5 (5일 이동평균)', value: stock.ma5 ? formatPriceWithCurrency(stock.ma5, stock.market) : '-' },
+            { label: 'MA20 (20일 이동평균)', value: stock.ma20 ? formatPriceWithCurrency(stock.ma20, stock.market) : '-' },
             { label: '거래량 비율', value: stock.volumeRatio ? `${stock.volumeRatio.toFixed(2)}배` : '-' },
             { label: '일 등락률', value: formatChange(stock.priceChangeRate) },
           ].map((item) => (

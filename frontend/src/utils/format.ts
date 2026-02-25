@@ -1,7 +1,17 @@
 import type { Recommendation, RiskLevel } from '../types'
 
+const isKoreanMarket = (market: string) => market === 'KOSPI' || market === 'KOSDAQ'
+
 export function formatPrice(price: number): string {
   return new Intl.NumberFormat('ko-KR').format(Math.round(price))
+}
+
+/** 시장에 따라 통화 기호를 붙여 가격을 포맷합니다. KOSPI/KOSDAQ → ₩, 그 외 → $ */
+export function formatPriceWithCurrency(price: number, market: string): string {
+  if (isKoreanMarket(market)) {
+    return `₩${new Intl.NumberFormat('ko-KR').format(Math.round(price))}`
+  }
+  return `$${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(price)}`
 }
 
 export function formatChange(rate: number): string {
