@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>StockGuide</title>
+  <script>
+    // GitHub Pages SPA redirect (single-page app 404 workaround)
+    // Saves the current path and redirects to index.html with a query param
+    var l = window.location;
+    l.replace(
+      l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+      '/vibe-demo/?p=/' +
+      l.pathname.slice('/vibe-demo/'.length).replace(/&/g, '~and~') +
+      (l.search ? '&q=' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+      l.hash
+    );
+  </script>
+</head>
+<body></body>
+</html>
