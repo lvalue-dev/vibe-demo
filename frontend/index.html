@@ -6,6 +6,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="StockGuide - 주식 초보자를 위한 투자 의사결정 도우미" />
     <title>StockGuide - 주식 투자 가이드</title>
+    <script>
+      // GitHub Pages SPA redirect: 404.html이 ?p=/path 로 리다이렉트한 경우 실제 경로를 복원
+      ;(function () {
+        var l = window.location
+        if (l.search[1] === 'p') {
+          var decoded = l.search.slice(1).split('&').map(function (s) {
+            return s.replace(/~and~/g, '&')
+          })
+          window.history.replaceState(
+            null, null,
+            l.pathname.slice(0, -1) + decoded[0].slice(2) +
+            (decoded[1] ? '?' + decoded[1] : '') + l.hash
+          )
+        }
+      }())
+    </script>
   </head>
   <body>
     <div id="root"></div>

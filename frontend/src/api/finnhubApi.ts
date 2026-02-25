@@ -1,6 +1,23 @@
 import type { StockListItem, StockDetail, PricePoint, Recommendation, RiskLevel } from '../types'
 import { getMockStockDetail, MOCK_STOCKS } from './mockData'
 
+// ── sessionStorage cache (5분 TTL) ───────────────────────────────────────────
+const CACHE_TTL = 5 * 60 * 1000
+
+function getCached<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return null
+    const { data, ts } = JSON.parse(raw) as { data: T; ts: number }
+    if (Date.now() - ts > CACHE_TTL) { sessionStorage.removeItem(key); return null }
+    return data
+  } catch { return null }
+}
+
+function setCache<T>(key: string, data: T): void {
+  try { sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })) } catch { /* ignore */ }
+}
+
 // ── Finnhub (US stocks) ──────────────────────────────────────────────────────
 const FH_TOKEN = 'd6f9mipr01qvn4o2asb0d6f9mipr01qvn4o2asbg'
 const FH_BASE = 'https://finnhub.io/api/v1'
@@ -230,7 +247,10 @@ function analyze(params: {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function fetchRealStocks(): Promise<StockListItem[]> {
-  return Promise.all(
+  const cached = getCached<StockListItem[]>('stocks_list')
+  if (cached) return cached
+
+  const result = await Promise.all(
     REAL_SYMBOLS.map(async (symbol): Promise<StockListItem> => {
       const mock = MOCK_STOCKS.find((s) => s.symbol === symbol)!
       const [quote, daily] = await Promise.all([getQuote(symbol), getDailyCandles(symbol)])
@@ -269,9 +289,14 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
       }
     })
   )
+  setCache('stocks_list', result)
+  return result
 }
 
 export async function fetchRealStockDetail(symbol: string): Promise<StockDetail> {
+  const cached = getCached<StockDetail>(`stock_${symbol}`)
+  if (cached) return cached
+
   const info = STOCK_INFO[symbol]
   if (!info) return getMockStockDetail(symbol)!
 
@@ -321,7 +346,7 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     })
   }
 
-  return {
+  const detail: StockDetail = {
     symbol,
     name: info.name,
     market: info.market,
@@ -342,4 +367,6 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     chartData,
     analyzedAt: new Date().toISOString(),
   }
+  setCache(`stock_${symbol}`, detail)
+  return detail
 }

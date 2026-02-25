@@ -69,7 +69,7 @@ export default function Portfolio() {
       {items.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
           <h2 className="text-sm font-medium text-gray-500 mb-3">총 평가</h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-gray-400 mb-0.5">투자 원금</p>
               <p className="font-bold text-gray-800">₩{formatPrice(totalInvested)}</p>
@@ -95,7 +95,7 @@ export default function Portfolio() {
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-blue-50 rounded-xl border border-blue-100 p-4 mb-4">
           <h3 className="text-sm font-bold text-blue-800 mb-3">종목 추가</h3>
-          <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div>
               <label className="text-xs text-gray-600 block mb-1">심볼</label>
               <input
@@ -177,7 +177,7 @@ export default function Portfolio() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-4 gap-3 text-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                   <div>
                     <p className="text-xs text-gray-400 mb-0.5">평균단가</p>
                     <p className="font-medium text-gray-700">₩{formatPrice(item.avgPrice)}</p>
