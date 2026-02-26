@@ -1,4 +1,4 @@
-import type { StockListItem, StockDetail, PricePoint, DailyBar, InstitutionalFlow, Recommendation, RiskLevel } from '../types'
+import type { StockListItem, StockDetail, PricePoint, DailyBar, InstitutionalFlow, InstitutionTypeSummary, InstitutionDailyRow, Recommendation, RiskLevel } from '../types'
 
 // ── sessionStorage cache (5분 TTL, stale fallback 포함) ──────────────────────
 const CACHE_TTL = 60 * 1000  // 1분
@@ -140,6 +140,32 @@ function buildVolumeHistory(ts: number[], opens: number[], closes: number[], vol
       isUp: (closes[i] ?? 0) >= (opens[i] ?? closes[i] ?? 0),
     }
   })
+}
+
+// ── 기관 유형 분해 ────────────────────────────────────────────────────────────
+const INST_TYPES = ['금융투자', '투신', '연기금', '보험', '은행', '기타법인'] as const
+const INST_BASE_W = [0.35, 0.25, 0.20, 0.10, 0.05, 0.05]
+
+function buildInstitutionDaily(flow: InstitutionalFlow[], symbol: string): InstitutionDailyRow[] {
+  const seed0 = symbolSeed(symbol) * 17
+  return flow.map((f, di) => {
+    const total = f.institutional
+    const raw = INST_BASE_W.map((w, ti) => w * (0.7 + 0.6 * seededRand(seed0 + di * 31 + ti * 7)))
+    const tw = raw.reduce((a, b) => a + b, 0)
+    const row = { date: f.date } as unknown as InstitutionDailyRow
+    INST_TYPES.forEach((t, ti) => { (row as unknown as Record<string, number | string>)[t] = Math.round(total * raw[ti] / tw) })
+    return row
+  })
+}
+
+function buildInstitutionSummary(daily: InstitutionDailyRow[]): InstitutionTypeSummary[] {
+  if (!daily.length) return INST_TYPES.map(name => ({ name, todayFlow: 0, cumFlow: 0 }))
+  const today = daily[daily.length - 1]
+  return INST_TYPES.map(name => ({
+    name,
+    todayFlow: today[name as keyof InstitutionDailyRow] as number,
+    cumFlow: daily.reduce((s, r) => s + (r[name as keyof InstitutionDailyRow] as number), 0),
+  }))
 }
 
 function buildInstitutionalFlow(
@@ -400,8 +426,10 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
   const result = analyze({ currentPrice: quote.currentPrice, ma5, ma20, volumeRatio, priceChangeRate, volatility })
 
   // 거래량 히스토리 & 투자자별 순매수 (추정)
-  const volumeHistory    = buildVolumeHistory(timestamps, opens, closes, volumes)
+  const volumeHistory     = buildVolumeHistory(timestamps, opens, closes, volumes)
   const institutionalFlow = buildInstitutionalFlow(timestamps, opens, closes, volumes, symbol, quote.currentPrice)
+  const institutionDaily  = buildInstitutionDaily(institutionalFlow, symbol)
+  const institutionSummary = buildInstitutionSummary(institutionDaily)
 
   let chartData: PricePoint[]
   if (intraday && intraday.closes.length > 0) {
@@ -433,7 +461,7 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     recommendationLabel: result.recommendationLabel, risk: result.risk,
     riskLabel: result.riskLabel, reasons: result.reasons,
     ma5, ma20, volumeRatio, avgVolume5, avgVolume20,
-    chartData, volumeHistory, institutionalFlow,
+    chartData, volumeHistory, institutionalFlow, institutionSummary, institutionDaily,
     analyzedAt: new Date().toISOString(),
   }
   setCache(`stock_${symbol}`, detail)

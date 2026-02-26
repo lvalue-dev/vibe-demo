@@ -25,9 +25,20 @@ export function formatVolume(vol: number): string {
   return String(vol)
 }
 
-export function formatReturnRate(rate: number): string {
-  const pct = (rate * 100).toFixed(2)
-  return rate >= 0 ? `+${pct}%` : `${pct}%`
+export function formatFlow(v: number, market: string): string {
+  const isKR = market === 'KOSPI' || market === 'KOSDAQ'
+  const sign = v >= 0 ? '+' : ''
+  const abs = Math.abs(v)
+  if (isKR) {
+    if (abs >= 1e12) return `${sign}${(v / 1e12).toFixed(1)}조`
+    if (abs >= 1e8)  return `${sign}${(v / 1e8).toFixed(0)}억`
+    if (abs >= 1e4)  return `${sign}${(v / 1e4).toFixed(0)}만`
+    return `${sign}${Math.round(v)}`
+  }
+  if (abs >= 1e9) return `${sign}$${(v / 1e9).toFixed(1)}B`
+  if (abs >= 1e6) return `${sign}$${(v / 1e6).toFixed(0)}M`
+  if (abs >= 1e3) return `${sign}$${(v / 1e3).toFixed(0)}K`
+  return `${sign}$${Math.round(v)}`
 }
 
 export const RECOMMENDATION_COLORS: Record<Recommendation, string> = {
@@ -42,6 +53,11 @@ export const RECOMMENDATION_BG: Record<Recommendation, string> = {
   BUY: '#f0fdf4',
   HOLD: '#fef3c7',
   SELL: '#fee2e2',
+}
+
+export function formatReturnRate(rate: number): string {
+  const pct = (rate * 100).toFixed(2)
+  return rate >= 0 ? `+${pct}%` : `${pct}%`
 }
 
 export const RISK_COLORS: Record<RiskLevel, string> = {

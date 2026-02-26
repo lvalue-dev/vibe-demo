@@ -1,115 +1,98 @@
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from 'recharts'
 import type { InstitutionalFlow } from '../../types'
+import { formatFlow } from '../../utils/format'
 
 interface Props {
   data: InstitutionalFlow[]
   market: string
 }
 
-function formatFlow(v: number, market: string): string {
-  const isKR = market === 'KOSPI' || market === 'KOSDAQ'
-  const sign = v >= 0 ? '+' : ''
-  const abs = Math.abs(v)
-  if (isKR) {
-    if (abs >= 1e12) return `${sign}${(v / 1e12).toFixed(1)}조`
-    if (abs >= 1e8)  return `${sign}${(v / 1e8).toFixed(0)}억`
-    if (abs >= 1e4)  return `${sign}${(v / 1e4).toFixed(0)}만`
-    return `${sign}${v.toFixed(0)}`
-  }
-  if (abs >= 1e9) return `${sign}$${(v / 1e9).toFixed(1)}B`
-  if (abs >= 1e6) return `${sign}$${(v / 1e6).toFixed(0)}M`
-  if (abs >= 1e3) return `${sign}$${(v / 1e3).toFixed(0)}K`
-  return `${sign}$${v.toFixed(0)}`
-}
-
-const LABELS: Record<string, string> = {
-  institutional: '기관',
-  foreign: '외국인',
-  individual: '개인',
-}
-
-// 누적 순매수 합계
-function cumulativeSum(data: InstitutionalFlow[], key: keyof Omit<InstitutionalFlow, 'date'>): number {
-  return data.reduce((sum, d) => sum + (d[key] as number), 0)
-}
+const INVESTOR_META = [
+  { key: 'institutional' as const, label: '기관',   color: '#3b82f6', dot: 'bg-blue-500' },
+  { key: 'foreign'      as const, label: '외국인',  color: '#f59e0b', dot: 'bg-amber-400' },
+  { key: 'individual'   as const, label: '개인',    color: '#9ca3af', dot: 'bg-gray-400' },
+]
 
 export default function InstitutionalChart({ data, market }: Props) {
-  if (!data.length) {
-    return (
-      <div className="flex items-center justify-center h-32 bg-gray-50 rounded-lg text-gray-400 text-sm">
-        투자자 데이터 수집 중...
-      </div>
-    )
-  }
+  if (!data.length) return null
 
-  const totalInst = cumulativeSum(data, 'institutional')
-  const totalFgn  = cumulativeSum(data, 'foreign')
-  const totalInd  = cumulativeSum(data, 'individual')
+  const today = data[data.length - 1]
+  const cumInst = data.reduce((s, d) => s + d.institutional, 0)
+  const cumFgn  = data.reduce((s, d) => s + d.foreign, 0)
+  const cumInd  = data.reduce((s, d) => s + d.individual, 0)
+  const cums    = [cumInst, cumFgn, cumInd]
+  const todays  = [today.institutional, today.foreign, today.individual]
 
   return (
-    <div>
-      {/* 기간 누적 요약 */}
-      <div className="flex flex-wrap gap-x-5 gap-y-1 mb-3 text-xs text-gray-600">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-500" />
-          기관&nbsp;
-          <strong className={totalInst >= 0 ? 'text-blue-600' : 'text-red-500'}>
-            {formatFlow(totalInst, market)}
-          </strong>
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-400" />
-          외국인&nbsp;
-          <strong className={totalFgn >= 0 ? 'text-amber-600' : 'text-red-500'}>
-            {formatFlow(totalFgn, market)}
-          </strong>
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-gray-400" />
-          개인&nbsp;
-          <strong className={totalInd >= 0 ? 'text-gray-700' : 'text-red-500'}>
-            {formatFlow(totalInd, market)}
-          </strong>
-        </span>
-        <span className="text-gray-400 ml-auto">기간 누적 순매수</span>
+    <div className="space-y-5">
+      {/* 요약 카드 3개 */}
+      <div className="grid grid-cols-3 gap-3">
+        {INVESTOR_META.map(({ key, label, dot }, i) => {
+          const t = todays[i]
+          const c = cums[i]
+          const isPos = t >= 0
+          return (
+            <div
+              key={key}
+              className={`rounded-xl border p-3 ${isPos ? 'border-blue-100 bg-blue-50' : 'border-red-100 bg-red-50'}`}
+            >
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />
+                <span className="text-xs font-semibold text-gray-700">{label}</span>
+              </div>
+              <p className={`text-sm font-bold ${isPos ? 'text-blue-700' : 'text-red-600'}`}>
+                {formatFlow(t, market)}
+              </p>
+              <p className="text-[10px] text-gray-400 mt-0.5">오늘 순매수</p>
+              <div className="mt-2 pt-2 border-t border-gray-200/60">
+                <p className={`text-xs font-semibold ${c >= 0 ? 'text-gray-700' : 'text-red-500'}`}>
+                  {formatFlow(c, market)}
+                </p>
+                <p className="text-[10px] text-gray-400">20일 누적</p>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barCategoryGap="35%">
-          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-          <XAxis
-            dataKey="date"
-            tick={{ fontSize: 10, fill: '#9ca3af' }}
-            tickLine={false}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            tick={{ fontSize: 10, fill: '#9ca3af' }}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v) => formatFlow(v, market)}
-            width={58}
-          />
-          <Tooltip
-            formatter={(v: number, name: string) => [formatFlow(v, market), LABELS[name] ?? name]}
-            contentStyle={{ fontSize: 11, borderRadius: 8 }}
-          />
-          <Legend
-            formatter={(v) => LABELS[v] ?? v}
-            wrapperStyle={{ fontSize: 12 }}
-          />
-          <ReferenceLine y={0} stroke="#d1d5db" />
-          <Bar dataKey="institutional" fill="#3b82f6" fillOpacity={0.85} radius={[2, 2, 0, 0]} />
-          <Bar dataKey="foreign"       fill="#f59e0b" fillOpacity={0.85} radius={[2, 2, 0, 0]} />
-          <Bar dataKey="individual"    fill="#9ca3af" fillOpacity={0.85} radius={[2, 2, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
+      {/* 꺾은선 추이 */}
+      <div>
+        <p className="text-xs font-semibold text-gray-600 mb-3">순매수 추이 (20거래일)</p>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={data} margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} interval="preserveStartEnd" />
+            <YAxis
+              tick={{ fontSize: 10, fill: '#9ca3af' }}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v) => formatFlow(v, market)}
+              width={64}
+            />
+            <Tooltip
+              formatter={(v: number, name: string) => {
+                const m = INVESTOR_META.find(x => x.key === name)
+                return [formatFlow(v, market), m?.label ?? name]
+              }}
+              contentStyle={{ fontSize: 11, borderRadius: 8 }}
+            />
+            <Legend
+              formatter={(v) => INVESTOR_META.find(x => x.key === v)?.label ?? v}
+              wrapperStyle={{ fontSize: 12 }}
+            />
+            <ReferenceLine y={0} stroke="#e5e7eb" strokeWidth={1.5} />
+            {INVESTOR_META.map(({ key, color }) => (
+              <Line key={key} type="monotone" dataKey={key} stroke={color} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
 
-      <p className="text-[10px] text-gray-400 mt-1 text-right">
-        * 거래량·가격 데이터 기반 추정치 (실제 기관 신고 데이터와 다를 수 있음)
+      <p className="text-[10px] text-gray-400 text-right">
+        * 거래량·가격 기반 추정치. 실제 기관 신고 데이터와 다를 수 있음.
       </p>
     </div>
   )
