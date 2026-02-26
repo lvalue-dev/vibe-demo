@@ -1,21 +1,35 @@
 services:
   - type: web
     name: stockguide-backend
-    runtime: docker
-    dockerfilePath: ./Dockerfile
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
     envVars:
-      - key: DATABASE_URL
-        sync: false
-      - key: DATABASE_USERNAME
-        sync: false
-      - key: DATABASE_PASSWORD
-        sync: false
-      - key: REDIS_URL
-        sync: false
-      - key: JWT_SECRET
-        generateValue: true
-      - key: CORS_ORIGINS
-        value: https://your-app.vercel.app
-      - key: JPA_DDL_AUTO
-        value: update
-    healthCheckPath: /actuator/health
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: KIS_MODE
+        value: paper
+      - key: KIS_APP_KEY
+        sync: false          # Render 대시보드에서 직접 입력
+      - key: KIS_APP_SECRET
+        sync: false          # Render 대시보드에서 직접 입력
+      - key: FRONTEND_URL
+        sync: false          # 프론트엔드 배포 후 URL 입력
+
+# ── Java 전환 시 참고 (미사용) ─────────────────────────────────────────────────
+# services:
+#   - type: web
+#     name: stockguide-backend-java
+#     runtime: docker
+#     dockerfilePath: ./Dockerfile
+#     envVars:
+#       - key: DATABASE_URL
+#         sync: false
+#       - key: REDIS_URL
+#         sync: false
+#       - key: JWT_SECRET
+#         generateValue: true

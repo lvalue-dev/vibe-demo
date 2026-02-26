@@ -1,17 +1,19 @@
-FROM eclipse-temurin:17-jdk-alpine AS builder
+# ── Build stage ────────────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
 WORKDIR /app
-COPY gradlew .
-COPY gradle gradle
-COPY build.gradle .
-COPY settings.gradle .
-RUN chmod +x ./gradlew
-COPY src src
-RUN ./gradlew bootJar -x test --no-daemon
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
 
-FROM eclipse-temurin:17-jre-alpine
+# ── Runtime stage ──────────────────────────────────────────────────────────────
+FROM node:20-alpine
 WORKDIR /app
 RUN addgroup -S stockguide && adduser -S stockguide -G stockguide
-COPY --from=builder /app/build/libs/*.jar app.jar
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist ./dist
 USER stockguide
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+EXPOSE 3001
+CMD ["node", "dist/index.js"]
