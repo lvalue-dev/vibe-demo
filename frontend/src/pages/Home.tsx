@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { stockApi } from '../api/stockApi'
+import { isBackendEnabled } from '../api/backendApi'
+import { useLivePrices } from '../hooks/useLivePrices'
 import StockCard from '../components/stock/StockCard'
 import MarketTrendPanel from '../components/market/MarketTrendPanel'
 import type { Recommendation } from '../types'
@@ -28,10 +30,14 @@ export default function Home() {
   const { data: stocks = [], isLoading, isError, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['stocks'],
     queryFn: stockApi.getAll,
-    staleTime: 30 * 1000,      // 30초 후 stale
-    refetchInterval: 30 * 1000, // 30초마다 자동 갱신
+    staleTime: 30 * 1000,
+    // 백엔드 SSE가 있으면 polling 주기를 늘림 (SSE가 실시간 갱신 담당)
+    refetchInterval: isBackendEnabled ? 60 * 1000 : 30 * 1000,
     retry: 1,
   })
+
+  // 백엔드 연결 시 SSE로 실시간 가격 수신
+  useLivePrices()
 
   const filtered = useMemo(() => {
     return stocks.filter((s) => {
@@ -108,7 +114,7 @@ export default function Home() {
             : <span className="inline-block w-2 h-2 rounded-full bg-green-400" />}
           <p className="text-xs text-gray-400">
             {isFetching ? '데이터 갱신 중...' : `마지막 업데이트: ${formatTime(dataUpdatedAt) ?? '-'}`}
-            &nbsp;·&nbsp;30초마다 자동 갱신
+            &nbsp;·&nbsp;{isBackendEnabled ? '실시간 (SSE)' : '30초마다 자동 갱신'}
           </p>
         </div>
       )}
