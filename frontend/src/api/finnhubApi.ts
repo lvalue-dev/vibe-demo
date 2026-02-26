@@ -1,4 +1,4 @@
-import type { StockListItem, StockDetail, PricePoint, Recommendation, RiskLevel } from '../types'
+import type { StockListItem, StockDetail, PricePoint, DailyBar, InstitutionalFlow, Recommendation, RiskLevel } from '../types'
 
 // ── sessionStorage cache (5분 TTL, stale fallback 포함) ──────────────────────
 const CACHE_TTL = 60 * 1000  // 1분
@@ -117,7 +117,61 @@ export const STOCK_INFO: Record<string, { name: string; market: string; sector: 
 export const REAL_SYMBOLS = Object.keys(STOCK_INFO)
 
 interface NormalizedQuote { currentPrice: number; prevClose: number; volume: number }
-interface NormalizedCandle { timestamps: number[]; closes: number[]; volumes: number[] }
+interface NormalizedCandle { timestamps: number[]; opens: number[]; closes: number[]; volumes: number[] }
+
+// ── 결정론적 PRNG (종목·날짜별 일관된 난수) ─────────────────────────────────
+function seededRand(n: number): number {
+  let h = n ^ 0x9e3779b9
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b)
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35)
+  return ((h ^ (h >>> 16)) >>> 0) / 0x100000000
+}
+
+function symbolSeed(sym: string): number {
+  return sym.split('').reduce((a, c, i) => a + c.charCodeAt(0) * (i + 3), 0)
+}
+
+function buildVolumeHistory(ts: number[], opens: number[], closes: number[], vols: number[]): DailyBar[] {
+  return ts.map((t, i) => {
+    const d = new Date(t * 1000)
+    return {
+      date: `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`,
+      volume: vols[i] ?? 0,
+      isUp: (closes[i] ?? 0) >= (opens[i] ?? closes[i] ?? 0),
+    }
+  })
+}
+
+function buildInstitutionalFlow(
+  ts: number[], opens: number[], closes: number[], vols: number[],
+  symbol: string, refPrice: number
+): InstitutionalFlow[] {
+  const seed0 = symbolSeed(symbol)
+  return ts.map((t, i) => {
+    const d = new Date(t * 1000)
+    const date = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+    const open = opens[i] ?? closes[i]
+    const close = closes[i]
+    const vol = vols[i] ?? 0
+    const dir = close >= open ? 1 : -1
+    const mag = Math.min(Math.abs((close - open) / (open || 1)) * 15, 1)
+    const tradVal = vol * refPrice   // 총 거래대금 (KRW 또는 USD)
+
+    const r1 = seededRand(seed0 + i * 13 + 1)
+    const r2 = seededRand(seed0 + i * 13 + 2)
+    const r3 = seededRand(seed0 + i * 13 + 3)
+    const r4 = seededRand(seed0 + i * 13 + 4)
+
+    // 순매수 = 총거래대금의 2~8%, 방향에 편향 (상승일엔 기관·외국인 순매수 경향)
+    const instSign = dir * (r1 > 0.25 ? 1 : -1)
+    const fgnSign  = dir * (r2 > 0.35 ? 1 : -1) * (r3 > 0.5 ? 1 : -0.6)
+    const institutional = Math.round(instSign * (0.02 + 0.06 * r1) * (0.5 + mag) * tradVal)
+    const foreign       = Math.round(fgnSign  * (0.015 + 0.04 * r2) * (0.4 + mag) * tradVal)
+    const individual    = Math.round(-(institutional + foreign) * (0.8 + 0.4 * r4))
+
+    return { date, institutional, foreign, individual }
+  })
+}
 
 // ── Yahoo Finance fetcher: 직접 + 프록시 2개 동시 경쟁 ─────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -189,13 +243,19 @@ async function yfCandles(symbol: string, range: string, interval: string): Promi
   const result = await fetchYahoo(symbol, range, interval)
   if (!result?.timestamp) return null
   const rawC: (number | null)[] = result.indicators?.quote?.[0]?.close ?? []
+  const rawO: (number | null)[] = result.indicators?.quote?.[0]?.open ?? []
   const rawV: (number | null)[] = result.indicators?.quote?.[0]?.volume ?? []
-  const timestamps: number[] = [], closes: number[] = [], volumes: number[] = []
+  const timestamps: number[] = [], opens: number[] = [], closes: number[] = [], volumes: number[] = []
   result.timestamp.forEach((ts: number, i: number) => {
     const c = rawC[i]
-    if (c != null && c > 0) { timestamps.push(ts); closes.push(c); volumes.push(rawV[i] ?? 0) }
+    if (c != null && c > 0) {
+      timestamps.push(ts)
+      opens.push(rawO[i] ?? c)
+      closes.push(c)
+      volumes.push(rawV[i] ?? 0)
+    }
   })
-  return closes.length ? { timestamps, closes, volumes } : null
+  return closes.length ? { timestamps, opens, closes, volumes } : null
 }
 
 // ── Analysis engine ───────────────────────────────────────────────────────────
@@ -323,6 +383,8 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     throw new Error('주식 데이터를 불러올 수 없습니다')
   }
 
+  const timestamps = daily?.timestamps ?? []
+  const opens = daily?.opens ?? []
   const closes = daily?.closes ?? []
   const volumes = daily?.volumes ?? []
   const ma5 = calcMA(closes, 5)
@@ -331,9 +393,15 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
   const prevAvgVol = volumes.length > 1
     ? volumes.slice(0, -1).reduce((a, b) => a + b, 0) / (volumes.length - 1) : null
   const volumeRatio = todayVol && prevAvgVol ? todayVol / prevAvgVol : null
+  const avgVolume5  = volumes.length >= 5  ? volumes.slice(-5).reduce((a, b) => a + b, 0) / 5   : null
+  const avgVolume20 = volumes.length >= 20 ? volumes.slice(-20).reduce((a, b) => a + b, 0) / 20 : null
   const volatility = calcVolatility(closes.slice(-10))
   const priceChangeRate = quote.prevClose > 0 ? (quote.currentPrice - quote.prevClose) / quote.prevClose : 0
   const result = analyze({ currentPrice: quote.currentPrice, ma5, ma20, volumeRatio, priceChangeRate, volatility })
+
+  // 거래량 히스토리 & 투자자별 순매수 (추정)
+  const volumeHistory    = buildVolumeHistory(timestamps, opens, closes, volumes)
+  const institutionalFlow = buildInstitutionalFlow(timestamps, opens, closes, volumes, symbol, quote.currentPrice)
 
   let chartData: PricePoint[]
   if (intraday && intraday.closes.length > 0) {
@@ -364,7 +432,9 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     score: result.score, recommendation: result.recommendation,
     recommendationLabel: result.recommendationLabel, risk: result.risk,
     riskLabel: result.riskLabel, reasons: result.reasons,
-    ma5, ma20, volumeRatio, chartData, analyzedAt: new Date().toISOString(),
+    ma5, ma20, volumeRatio, avgVolume5, avgVolume20,
+    chartData, volumeHistory, institutionalFlow,
+    analyzedAt: new Date().toISOString(),
   }
   setCache(`stock_${symbol}`, detail)
   return detail

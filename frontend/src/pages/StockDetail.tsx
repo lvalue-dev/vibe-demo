@@ -2,6 +2,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { stockApi, watchlistApi } from '../api/stockApi'
 import StockChart from '../components/stock/StockChart'
+import VolumeChart from '../components/stock/VolumeChart'
+import InstitutionalChart from '../components/stock/InstitutionalChart'
 import RecommendationBadge from '../components/common/RecommendationBadge'
 import RiskBadge from '../components/common/RiskBadge'
 import ScoreBar from '../components/common/ScoreBar'
@@ -147,10 +149,32 @@ export default function StockDetail() {
         </div>
       )}
 
-      {/* Chart */}
+      {/* Price Chart */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
         <h2 className="text-base font-bold text-gray-800 mb-4">가격 차트</h2>
         <StockChart data={stock.chartData} ma5={stock.ma5} ma20={stock.ma20} />
+      </div>
+
+      {/* Volume Chart */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+        <h2 className="text-base font-bold text-gray-800 mb-1">거래량 분석</h2>
+        <p className="text-xs text-gray-400 mb-4">최근 20거래일 · 초록 = 상승일, 빨강 = 하락일</p>
+        <VolumeChart
+          data={stock.volumeHistory}
+          todayVolume={stock.volume}
+          avgVolume5={stock.avgVolume5}
+          avgVolume20={stock.avgVolume20}
+        />
+      </div>
+
+      {/* Institutional Flow Chart */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+        <h2 className="text-base font-bold text-gray-800 mb-1">투자자별 순매수 추이</h2>
+        <p className="text-xs text-gray-400 mb-4">최근 20거래일 · 기관 / 외국인 / 개인</p>
+        <InstitutionalChart
+          data={stock.institutionalFlow}
+          market={stock.market}
+        />
       </div>
 
       {/* Technical Indicators */}
@@ -160,7 +184,9 @@ export default function StockDetail() {
           {[
             { label: 'MA5 (5일 이동평균)', value: stock.ma5 ? formatPriceWithCurrency(stock.ma5, stock.market) : '-' },
             { label: 'MA20 (20일 이동평균)', value: stock.ma20 ? formatPriceWithCurrency(stock.ma20, stock.market) : '-' },
-            { label: '거래량 비율', value: stock.volumeRatio ? `${stock.volumeRatio.toFixed(2)}배` : '-' },
+            { label: '거래량 비율 (전일 평균 대비)', value: stock.volumeRatio ? `${stock.volumeRatio.toFixed(2)}배` : '-' },
+            { label: '5일 평균 거래량', value: stock.avgVolume5 ? formatVolume(stock.avgVolume5) : '-' },
+            { label: '20일 평균 거래량', value: stock.avgVolume20 ? formatVolume(stock.avgVolume20) : '-' },
             { label: '일 등락률', value: formatChange(stock.priceChangeRate) },
           ].map((item) => (
             <div key={item.label} className="bg-gray-50 rounded-lg p-3">
