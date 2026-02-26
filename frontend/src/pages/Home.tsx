@@ -103,8 +103,13 @@ export default function Home() {
       {/* Results */}
       {isLoading && (
         <div className="text-center py-16 text-gray-400">
-          <div className="text-3xl mb-2 animate-spin">⟳</div>
-          데이터 불러오는 중...
+          <div className="text-3xl mb-3 animate-spin">⟳</div>
+          <p className="text-sm">데이터 불러오는 중...</p>
+          {isBackendEnabled && (
+            <p className="text-xs text-gray-300 mt-2">
+              서버 첫 접속 시 30~60초 소요될 수 있습니다
+            </p>
+          )}
         </div>
       )}
       {!isLoading && (

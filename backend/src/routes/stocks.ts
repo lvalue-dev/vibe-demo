@@ -1,50 +1,29 @@
 import { Router, Request, Response } from 'express'
 import { isKisConfigured } from '../kis/auth'
-import { getDomesticPrice, getDomesticCandles } from '../kis/domestic'
-import { getOverseasPrice, getOverseasCandles } from '../kis/overseas'
+import { getDomesticCandles } from '../kis/domestic'
+import { getOverseasCandles } from '../kis/overseas'
 import { parseYfSymbol } from '../kis/symbols'
 import { yfQuote, yfCandles } from '../yahoo/proxy'
 import { analyze } from '../analysis'
 import { STOCK_INFO } from '../stockInfo'
 import { addClient, removeClient } from '../sse'
+import { getCache, getCacheAge } from '../stockCache'
 import { randomUUID } from 'crypto'
 
 export const stocksRouter = Router()
 
-// ── 종목 목록 ──────────────────────────────────────────────────────────────────
-stocksRouter.get('/', async (_req: Request, res: Response) => {
-  const symbols = Object.keys(STOCK_INFO)
+// ── 종목 목록 (캐시에서 즉시 반환) ────────────────────────────────────────────
+stocksRouter.get('/', (_req: Request, res: Response) => {
+  const cached = getCache()
+  const age = getCacheAge()
 
-  // 배치로 현재가 조회 (KIS or Yahoo)
-  const results = await Promise.all(
-    symbols.map(async (sym) => {
-      try {
-        const info = STOCK_INFO[sym]
-        const kisInfo = parseYfSymbol(sym)
-        let price: number, prevClose: number, changeRate: number, volume: number
-
-        if (isKisConfigured()) {
-          const q = kisInfo.type === 'domestic'
-            ? await getDomesticPrice(kisInfo.code)
-            : await getOverseasPrice(kisInfo.exchange!, kisInfo.code)
-          if (!q) return null
-          price = q.price; prevClose = q.prevClose; changeRate = q.changeRate; volume = q.volume
-        } else {
-          const q = await yfQuote(sym)
-          if (!q) return null
-          price = q.price; prevClose = q.prevClose; changeRate = q.changeRate; volume = q.volume
-        }
-
-        return {
-          symbol: sym, name: info.name, market: info.market,
-          currentPrice: price, prevClose, priceChangeRate: changeRate, volume,
-          recommendation: null, recommendationLabel: '-', score: null, risk: null, riskLabel: '-', analyzedAt: null,
-        }
-      } catch { return null }
-    })
-  )
-
-  res.json(results.filter(Boolean))
+  if (cached.length > 0) {
+    res.setHeader('X-Cache-Age', age >= 0 ? String(Math.floor(age / 1000)) + 's' : 'fresh')
+    res.json(cached)
+  } else {
+    // 캐시 아직 준비 안 됨 (서버 시작 직후 3초 이내)
+    res.status(503).json({ error: 'Cache warming up, retry in a few seconds', retryAfter: 5 })
+  }
 })
 
 // ── 종목 상세 ─────────────────────────────────────────────────────────────────

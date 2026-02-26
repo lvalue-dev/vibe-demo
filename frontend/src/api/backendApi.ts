@@ -19,7 +19,15 @@ export async function checkHealth(): Promise<boolean> {
 
 // ── 종목 목록 ─────────────────────────────────────────────────────────────────
 export async function fetchStocksFromBackend(): Promise<StockListItem[]> {
-  const res = await fetch(`${BASE}/api/stocks`, { signal: AbortSignal.timeout(30000) })
+  // 65초 타임아웃: Render 무료 티어 cold start(~60초) 대응
+  const res = await fetch(`${BASE}/api/stocks`, { signal: AbortSignal.timeout(65000) })
+  if (res.status === 503) {
+    // 캐시 준비 중 → 5초 후 재시도
+    await new Promise(r => setTimeout(r, 5000))
+    const retry = await fetch(`${BASE}/api/stocks`, { signal: AbortSignal.timeout(30000) })
+    if (!retry.ok) throw new Error(`Backend stocks failed: ${retry.status}`)
+    return retry.json()
+  }
   if (!res.ok) throw new Error(`Backend stocks failed: ${res.status}`)
   return res.json()
 }

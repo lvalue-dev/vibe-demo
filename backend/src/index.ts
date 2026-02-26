@@ -3,6 +3,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import { stocksRouter } from './routes/stocks'
 import { startPoller } from './poller'
+import { startCache } from './stockCache'
 import { isKisConfigured } from './kis/auth'
 
 dotenv.config()
@@ -37,4 +38,5 @@ app.listen(PORT, () => {
   console.log(`[Server] KIS: ${isKisConfigured() ? '✓ configured' : '✗ not configured (Yahoo fallback)'}`)
   console.log(`[Server] mode: ${process.env.KIS_MODE ?? 'paper (모의투자)'}`)
   startPoller()
+  startCache()
 })
