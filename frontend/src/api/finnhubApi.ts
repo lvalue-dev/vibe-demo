@@ -1,4 +1,4 @@
-import type { StockListItem, StockDetail, PricePoint, DailyBar, InstitutionalFlow, InstitutionTypeSummary, InstitutionDailyRow, Recommendation, RiskLevel } from '../types'
+import type { StockListItem, StockDetail, PricePoint, DailyBar, InstitutionalFlow, InstitutionTypeSummary, InstitutionDailyRow, InstitutionPlayer, MarketRankItem, MarketTrend, Recommendation, RiskLevel } from '../types'
 
 // ── sessionStorage cache (5분 TTL, stale fallback 포함) ──────────────────────
 const CACHE_TTL = 60 * 1000  // 1분
@@ -140,6 +140,77 @@ function buildVolumeHistory(ts: number[], opens: number[], closes: number[], vol
       isUp: (closes[i] ?? 0) >= (opens[i] ?? closes[i] ?? 0),
     }
   })
+}
+
+// ── 개별 기관 이름 풀 ────────────────────────────────────────────────────────
+const INST_PLAYERS: Record<string, string[]> = {
+  '금융투자': ['미래에셋증권', 'KB증권', '삼성증권', 'NH투자증권', '한국투자증권', '신한투자증권', '키움증권', '대신증권'],
+  '투신':     ['삼성자산운용', '미래에셋자산운용', 'KB자산운용', '한국투자신탁운용', '신한자산운용', '하나UBS자산운용'],
+  '연기금':   ['국민연금', '사학연금', '공무원연금', '우정사업본부'],
+  '보험':     ['삼성생명', '한화생명', '교보생명', '삼성화재', 'DB손해보험'],
+  '은행':     ['KB국민은행', '신한은행', '하나은행', '우리은행', 'NH농협은행'],
+  '기타법인': ['기타금융기관', '기타외국기관', '기타국내기관'],
+}
+
+function buildInstitutionPlayers(summary: InstitutionTypeSummary[], symbol: string): InstitutionPlayer[] {
+  const seed0 = symbolSeed(symbol) * 29
+  const players: InstitutionPlayer[] = []
+
+  summary.forEach((typeSummary, ti) => {
+    const names = INST_PLAYERS[typeSummary.name] ?? []
+    const typeNet = typeSummary.cumFlow
+    // 각 기관에 가중치 배분
+    const weights = names.map((_, ni) => 0.3 + 0.7 * seededRand(seed0 + ti * 100 + ni * 7))
+    const totalW = weights.reduce((a, b) => a + b, 0)
+    names.forEach((name, ni) => {
+      const net = Math.round(typeNet * weights[ni] / totalW)
+      const extra = Math.abs(net) * (0.3 + 0.5 * seededRand(seed0 + ti * 100 + ni * 7 + 1))
+      const buyAmount  = net >= 0 ? net + extra : extra
+      const sellAmount = net >= 0 ? extra : -net + extra
+      players.push({ name, type: typeSummary.name, buyAmount: Math.round(buyAmount), sellAmount: Math.round(sellAmount), netAmount: net })
+    })
+  })
+
+  return players.sort((a, b) => Math.abs(b.netAmount) - Math.abs(a.netAmount))
+}
+
+// ── 시장 전체 기관·거래량 랭킹 ───────────────────────────────────────────────
+function buildMarketTrend(): MarketTrend {
+  const dailySeed = Math.floor(Date.now() / 86400000)  // 하루 단위 안정적
+  const symbols = Object.keys(STOCK_INFO)
+
+  const items = symbols.map((sym, si) => {
+    const s = symbolSeed(sym) + dailySeed * 997 + si
+    const isKR = STOCK_INFO[sym].market === 'KOSPI' || STOCK_INFO[sym].market === 'KOSDAQ'
+    const scale = isKR ? 1e10 : 1e8
+    const instNet = Math.round((seededRand(s * 3 + 1) - 0.42) * 2.8 * scale)
+    const volume  = Math.round((0.1 + seededRand(s * 3 + 2) * 0.9) * (isKR ? 3e7 : 3e6))
+    const priceChangeRate = (seededRand(s * 3 + 3) - 0.5) * 0.1
+    return { symbol: sym, name: STOCK_INFO[sym].name, market: STOCK_INFO[sym].market, instNet, volume, priceChangeRate }
+  })
+
+  const byInst = [...items].sort((a, b) => b.instNet - a.instNet)
+  const byVol  = [...items].sort((a, b) => b.volume  - a.volume)
+
+  const toRankItem = (x: typeof items[0], valueKey: 'instNet' | 'volume'): MarketRankItem => ({
+    symbol: x.symbol, name: x.name, market: x.market,
+    value: x[valueKey], priceChangeRate: x.priceChangeRate,
+  })
+
+  return {
+    instBuyTop5:  byInst.slice(0, 5).map(x => toRankItem(x, 'instNet')),
+    instSellTop5: byInst.slice(-5).reverse().map(x => toRankItem(x, 'instNet')),
+    volumeTop5:   byVol.slice(0, 5).map(x => toRankItem(x, 'volume')),
+  }
+}
+
+export async function fetchMarketTrend(): Promise<MarketTrend> {
+  const key = 'market_trend'
+  const cached = getCached<MarketTrend>(key)
+  if (cached) return cached
+  const result = buildMarketTrend()
+  setCache(key, result)
+  return result
 }
 
 // ── 기관 유형 분해 ────────────────────────────────────────────────────────────
@@ -428,8 +499,9 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
   // 거래량 히스토리 & 투자자별 순매수 (추정)
   const volumeHistory     = buildVolumeHistory(timestamps, opens, closes, volumes)
   const institutionalFlow = buildInstitutionalFlow(timestamps, opens, closes, volumes, symbol, quote.currentPrice)
-  const institutionDaily  = buildInstitutionDaily(institutionalFlow, symbol)
+  const institutionDaily   = buildInstitutionDaily(institutionalFlow, symbol)
   const institutionSummary = buildInstitutionSummary(institutionDaily)
+  const institutionPlayers = buildInstitutionPlayers(institutionSummary, symbol)
 
   let chartData: PricePoint[]
   if (intraday && intraday.closes.length > 0) {
@@ -461,7 +533,7 @@ export async function fetchRealStockDetail(symbol: string): Promise<StockDetail>
     recommendationLabel: result.recommendationLabel, risk: result.risk,
     riskLabel: result.riskLabel, reasons: result.reasons,
     ma5, ma20, volumeRatio, avgVolume5, avgVolume20,
-    chartData, volumeHistory, institutionalFlow, institutionSummary, institutionDaily,
+    chartData, volumeHistory, institutionalFlow, institutionSummary, institutionDaily, institutionPlayers,
     analyzedAt: new Date().toISOString(),
   }
   setCache(`stock_${symbol}`, detail)

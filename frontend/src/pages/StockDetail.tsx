@@ -249,6 +249,7 @@ export default function StockDetail() {
               <InstitutionBreakdown
                 summary={stock.institutionSummary}
                 daily={stock.institutionDaily}
+                players={stock.institutionPlayers}
                 market={stock.market}
               />
             </div>

@@ -57,6 +57,31 @@ export interface InstitutionDailyRow {
   기타법인: number
 }
 
+/** 개별 기관 매수/매도 상세 */
+export interface InstitutionPlayer {
+  name: string        // e.g., '국민연금', '미래에셋증권'
+  type: string        // e.g., '연기금', '금융투자'
+  buyAmount: number   // 20일 누적 매수
+  sellAmount: number  // 20일 누적 매도
+  netAmount: number   // 순매수 (+ 매수우세, - 매도우세)
+}
+
+/** 시장 전체 순위 1개 항목 */
+export interface MarketRankItem {
+  symbol: string
+  name: string
+  market: string
+  value: number           // 기관순매수 or 거래량
+  priceChangeRate: number
+}
+
+/** 시장 동향 랭킹 (홈 화면용) */
+export interface MarketTrend {
+  instBuyTop5:  MarketRankItem[]  // 기관 순매수 상위 5
+  instSellTop5: MarketRankItem[]  // 기관 순매도 상위 5
+  volumeTop5:   MarketRankItem[]  // 거래량 상위 5
+}
+
 export interface StockDetail {
   symbol: string
   name: string
@@ -82,6 +107,7 @@ export interface StockDetail {
   institutionalFlow: InstitutionalFlow[]
   institutionSummary: InstitutionTypeSummary[]
   institutionDaily: InstitutionDailyRow[]
+  institutionPlayers: InstitutionPlayer[]
   analyzedAt: string | null
 }
 

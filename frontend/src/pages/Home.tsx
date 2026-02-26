@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { stockApi } from '../api/stockApi'
 import StockCard from '../components/stock/StockCard'
+import MarketTrendPanel from '../components/market/MarketTrendPanel'
 import type { Recommendation } from '../types'
 
 function formatTime(ms: number) {
@@ -48,6 +49,9 @@ export default function Home() {
         <h1 className="text-2xl font-bold text-gray-900 mb-1">주식 투자 가이드</h1>
         <p className="text-gray-500 text-sm">지금 매수해도 될까요? AI 분석으로 쉽게 확인하세요.</p>
       </div>
+
+      {/* 시장 동향 랭킹 */}
+      <MarketTrendPanel />
 
       {/* Filters */}
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-6 space-y-3">
