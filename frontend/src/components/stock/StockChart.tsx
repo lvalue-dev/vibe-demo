@@ -26,6 +26,16 @@ export default function StockChart({ data }: Props) {
     )
   }
 
+  // 표시되는 모든 값(price + MA선) 중 min/max 계산
+  const allValues = data.flatMap((d) =>
+    [d.price, d.ma5 ?? null, d.ma20 ?? null].filter((v): v is number => v != null)
+  )
+  const minVal = Math.min(...allValues)
+  const maxVal = Math.max(...allValues)
+  // 위아래 3% 여백 추가
+  const pad = (maxVal - minVal) * 0.03 || maxVal * 0.005
+  const yDomain: [number, number] = [minVal - pad, maxVal + pad]
+
   return (
     <ResponsiveContainer width="100%" height={280}>
       <AreaChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
@@ -43,6 +53,7 @@ export default function StockChart({ data }: Props) {
           interval="preserveStartEnd"
         />
         <YAxis
+          domain={yDomain}
           tick={{ fontSize: 11, fill: '#9ca3af' }}
           tickLine={false}
           axisLine={false}
