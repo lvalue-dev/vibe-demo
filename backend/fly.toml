@@ -1,0 +1,26 @@
+# Fly.io 배포 설정
+# fly.io/docs/reference/configuration/
+
+app = "vibe-demo-backend"
+primary_region = "nrt"          # 도쿄 (한국과 가장 가까운 리전)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT     = "3001"
+  KIS_MODE = "paper"
+  # KIS_APP_KEY, KIS_APP_SECRET, FRONTEND_URL 은 아래 명령어로 설정:
+  # fly secrets set KIS_APP_KEY=xxx KIS_APP_SECRET=xxx FRONTEND_URL=https://lvalue-dev.github.io
+
+[http_service]
+  internal_port       = 3001
+  force_https         = true
+  auto_stop_machines  = false   # Cold start 방지 - 항상 켜둠
+  auto_start_machines = true
+  min_machines_running = 1      # 최소 1개 인스턴스 항상 유지
+
+[[vm]]
+  size   = "shared-cpu-1x"      # 무료 티어
+  memory = "256mb"
