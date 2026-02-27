@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV:      production
+      PORT:          "3001"
+      KIS_MODE:      ${KIS_MODE:-paper}
+      KIS_APP_KEY:   ${KIS_APP_KEY}
+      KIS_APP_SECRET: ${KIS_APP_SECRET}
+      FRONTEND_URL:  ${FRONTEND_URL}
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
