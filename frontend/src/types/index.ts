@@ -165,6 +165,31 @@ export interface AuthResponse {
   nickname: string
 }
 
+/** 개별 기관 매매동향 - 종목별 데이터 */
+export interface PlayerStockFlow {
+  symbol: string
+  name: string
+  market: string
+  buyAmount: number
+  sellAmount: number
+  netAmount: number
+  dailyNet: number[]
+}
+
+/** 개별 기관 정보 */
+export interface PlayerInfo {
+  name: string          // 골드만삭스, 국민연금 등
+  type: string          // 기관유형 (연기금, 외국인 등)
+  totalDailyNet: number[]
+  stocks: PlayerStockFlow[]
+}
+
+/** 개별 기관 매매동향 전체 */
+export interface PlayerTrendData {
+  dates: string[]
+  players: PlayerInfo[]
+}
+
 /** 기관별 매매동향 - 종목별 데이터 */
 export interface InstTypeStockFlow {
   symbol: string

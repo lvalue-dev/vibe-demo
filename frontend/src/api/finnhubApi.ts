@@ -150,6 +150,7 @@ const INST_PLAYERS: Record<string, string[]> = {
   '보험':     ['삼성생명', '한화생명', '교보생명', '삼성화재', 'DB손해보험'],
   '은행':     ['KB국민은행', '신한은행', '하나은행', '우리은행', 'NH농협은행'],
   '기타법인': ['기타금융기관', '기타외국기관', '기타국내기관'],
+  '외국인':   ['골드만삭스', 'JP모건', '블랙록', '뱅가드', '피델리티', '모건스탠리', 'UBS', '도이체방크', 'HSBC', '노무라', '씨티그룹', '메릴린치'],
 }
 
 function buildInstitutionPlayers(summary: InstitutionTypeSummary[], symbol: string): InstitutionPlayer[] {
@@ -462,7 +463,7 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
 }
 
 // ── 기관별 매매동향 (전 종목 집계, 결정론적) ─────────────────────────────────
-import type { InstitutionalTrendData } from '../types'
+import type { InstitutionalTrendData, PlayerTrendData, PlayerInfo, PlayerStockFlow } from '../types'
 
 const INST_TYPES_ALL = ['금융투자', '투신', '연기금', '보험', '은행', '기타법인', '외국인'] as const
 const TYPE_WEIGHT_ALL = [0.28, 0.20, 0.18, 0.09, 0.05, 0.04, 0.16]
@@ -517,6 +518,78 @@ export async function fetchInstitutionalTrend(): Promise<InstitutionalTrendData>
   if (cached) return cached
   const result = buildInstitutionalTrendSync()
   setCache('inst_trend', result)
+  return result
+}
+
+// ── 개별 기관별 매매동향 ──────────────────────────────────────────────────────
+function playerSeed(name: string): number {
+  return name.split('').reduce((a, c, i) => a + c.charCodeAt(0) * (i + 7), 0)
+}
+
+function buildPlayerTrendSync(): PlayerTrendData {
+  const dates = buildTradingDates(20)
+  const symbols = Object.keys(STOCK_INFO)
+
+  const allPlayers: Array<{ name: string; type: string }> = []
+  Object.entries(INST_PLAYERS).forEach(([type, names]) => {
+    names.forEach(name => allPlayers.push({ name, type }))
+  })
+
+  const players: PlayerInfo[] = allPlayers.map(({ name, type }) => {
+    const typIdx = INST_TYPES_ALL.indexOf(type as typeof INST_TYPES_ALL[number])
+    const typeWeight = typIdx >= 0 ? TYPE_WEIGHT_ALL[typIdx] : 0.05
+    const ps = playerSeed(name)
+    // 기관별 규모 가중치 (큰 기관은 더 많이 거래)
+    const sizeFactor = 0.08 + 0.22 * seededRand(ps * 41)
+
+    const totalDailyNet = new Array(20).fill(0)
+    const stocks: PlayerStockFlow[] = []
+
+    symbols.forEach(sym => {
+      const isKR = ['KOSPI', 'KOSDAQ'].includes(STOCK_INFO[sym].market)
+      const base = isKR ? 4e9 : 4e7
+      const s0 = symbolSeed(sym)
+
+      // 외국인 기관은 전 시장, 국내 기관은 주로 국내
+      const tradable = type === '외국인'
+        ? seededRand(ps + s0 * 3) > 0.15
+        : isKR
+          ? seededRand(ps + s0 * 3) > 0.25
+          : seededRand(ps + s0 * 3) > 0.80
+
+      const dailyNet = tradable
+        ? dates.map((_, di) => {
+            const sign = seededRand(s0 + di * 13 + typIdx * 17 + (ps % 7) + 3) > 0.45 ? 1 : -1
+            const mag  = seededRand(s0 + di * 7 + typIdx * 11 + (ps % 5) + 5) * typeWeight * sizeFactor
+            return Math.round(sign * mag * base)
+          })
+        : new Array(20).fill(0)
+
+      const net   = dailyNet.reduce((a, b) => a + b, 0)
+      const gross = dailyNet.reduce((a, b) => a + Math.abs(b), 0)
+      if (gross > 0) {
+        stocks.push({
+          symbol: sym, name: STOCK_INFO[sym].name, market: STOCK_INFO[sym].market,
+          buyAmount:  Math.round((gross + net) / 2),
+          sellAmount: Math.round((gross - net) / 2),
+          netAmount: net, dailyNet,
+        })
+        dailyNet.forEach((v, di) => { totalDailyNet[di] += v })
+      }
+    })
+
+    stocks.sort((a, b) => Math.abs(b.netAmount) - Math.abs(a.netAmount))
+    return { name, type, totalDailyNet, stocks }
+  })
+
+  return { dates, players }
+}
+
+export async function fetchPlayerTrend(): Promise<PlayerTrendData> {
+  const cached = getCached<PlayerTrendData>('player_trend')
+  if (cached) return cached
+  const result = buildPlayerTrendSync()
+  setCache('player_trend', result)
   return result
 }
 
