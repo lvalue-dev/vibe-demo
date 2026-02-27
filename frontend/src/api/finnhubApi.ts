@@ -461,6 +461,65 @@ export async function fetchRealStocks(): Promise<StockListItem[]> {
   return valid
 }
 
+// ── 기관별 매매동향 (전 종목 집계, 결정론적) ─────────────────────────────────
+import type { InstitutionalTrendData } from '../types'
+
+const INST_TYPES_ALL = ['금융투자', '투신', '연기금', '보험', '은행', '기타법인', '외국인'] as const
+const TYPE_WEIGHT_ALL = [0.28, 0.20, 0.18, 0.09, 0.05, 0.04, 0.16]
+
+function buildTradingDates(n: number): string[] {
+  const dates: string[] = []
+  const d = new Date()
+  while (dates.length < n) {
+    d.setDate(d.getDate() - 1)
+    if (d.getDay() !== 0 && d.getDay() !== 6)
+      dates.unshift(`${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`)
+  }
+  return dates
+}
+
+function buildInstitutionalTrendSync(): InstitutionalTrendData {
+  const dates = buildTradingDates(20)
+  const symbols = Object.keys(STOCK_INFO)
+  const byType: InstitutionalTrendData['byType'] = Object.fromEntries(
+    INST_TYPES_ALL.map(t => [t, { totalDailyNet: new Array(20).fill(0), stocks: [] }])
+  )
+
+  symbols.forEach(sym => {
+    const isKR = ['KOSPI', 'KOSDAQ'].includes(STOCK_INFO[sym].market)
+    const base = isKR ? 4e9 : 4e7   // 40억 KRW or $40M 기준
+    const s0 = symbolSeed(sym)
+
+    INST_TYPES_ALL.forEach((type, ti) => {
+      const dailyNet = dates.map((_, di) => {
+        const sign = seededRand(s0 + di * 13 + ti * 17 + 3) > 0.45 ? 1 : -1
+        const mag  = seededRand(s0 + di * 7  + ti * 11 + 5) * TYPE_WEIGHT_ALL[ti] * 0.5
+        return Math.round(sign * mag * base)
+      })
+      const net   = dailyNet.reduce((a, b) => a + b, 0)
+      const gross = dailyNet.reduce((a, b) => a + Math.abs(b), 0)
+      byType[type].stocks.push({
+        symbol: sym, name: STOCK_INFO[sym].name, market: STOCK_INFO[sym].market,
+        buyAmount:  Math.round((gross + net) / 2),
+        sellAmount: Math.round((gross - net) / 2),
+        netAmount: net, dailyNet,
+      })
+      dailyNet.forEach((v, di) => { byType[type].totalDailyNet[di] += v })
+    })
+  })
+
+  INST_TYPES_ALL.forEach(t => { byType[t].stocks.sort((a, b) => b.netAmount - a.netAmount) })
+  return { dates, byType }
+}
+
+export async function fetchInstitutionalTrend(): Promise<InstitutionalTrendData> {
+  const cached = getCached<InstitutionalTrendData>('inst_trend')
+  if (cached) return cached
+  const result = buildInstitutionalTrendSync()
+  setCache('inst_trend', result)
+  return result
+}
+
 export async function fetchRealStockDetail(symbol: string): Promise<StockDetail> {
   const cached = getCached<StockDetail>(`stock_${symbol}`)
   if (cached) return cached

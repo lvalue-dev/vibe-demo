@@ -164,3 +164,23 @@ export interface AuthResponse {
   email: string
   nickname: string
 }
+
+/** 기관별 매매동향 - 종목별 데이터 */
+export interface InstTypeStockFlow {
+  symbol: string
+  name: string
+  market: string
+  buyAmount: number
+  sellAmount: number
+  netAmount: number
+  dailyNet: number[]  // 날짜별 순매수 (20거래일)
+}
+
+/** 기관별 매매동향 - 전체 데이터 */
+export interface InstitutionalTrendData {
+  dates: string[]  // ['02/07', '02/08', ...]
+  byType: Record<string, {
+    totalDailyNet: number[]       // 날짜별 전 종목 합산 순매수
+    stocks: InstTypeStockFlow[]   // 종목별 상세 (순매수 기준 정렬)
+  }>
+}

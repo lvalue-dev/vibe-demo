@@ -7,6 +7,7 @@ import Watchlist from './pages/Watchlist'
 import Portfolio from './pages/Portfolio'
 import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
+import InstitutionalTrend from './pages/InstitutionalTrend'
 import { useAuthStore } from './store/authStore'
 
 const queryClient = new QueryClient({
@@ -33,6 +34,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/stocks/:symbol" element={<StockDetail />} />
+              <Route path="/institutional" element={<InstitutionalTrend />} />
               <Route path="/signin" element={<SignIn />} />
               <Route path="/signup" element={<SignUp />} />
               <Route
