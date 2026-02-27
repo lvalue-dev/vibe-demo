@@ -1,18 +1,38 @@
 services:
   backend:
     build: .
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"          # 외부 직접 노출 안 함 — Caddy가 프록시
     environment:
-      NODE_ENV:      production
-      PORT:          "3001"
-      KIS_MODE:      ${KIS_MODE:-paper}
-      KIS_APP_KEY:   ${KIS_APP_KEY}
+      NODE_ENV:       production
+      PORT:           "3001"
+      KIS_MODE:       ${KIS_MODE:-paper}
+      KIS_APP_KEY:    ${KIS_APP_KEY}
       KIS_APP_SECRET: ${KIS_APP_SECRET}
-      FRONTEND_URL:  ${FRONTEND_URL}
+      FRONTEND_URL:   ${FRONTEND_URL}
     restart: unless-stopped
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # 인증서 영구 저장
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN}        # ex) vibe-demo-api.duckdns.org
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,5 @@
+# Caddy가 자동으로 Let's Encrypt 인증서 발급 & 갱신
+# DOMAIN 환경변수로 주입 (예: vibe-demo-api.duckdns.org)
+{$DOMAIN} {
+    reverse_proxy backend:3001
+}
