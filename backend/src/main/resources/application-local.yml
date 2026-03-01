@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/stockguide
+    username: postgres
+    password: password
+
+  data:
+    redis:
+      url: redis://localhost:6379
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+cors:
+  allowed-origins: http://localhost:5173,http://localhost:3000
+
+stock:
+  collector:
+    enabled: false   # 로컬에서는 자동 수집 끔 (Yahoo API 호출 최소화)
+
+logging:
+  level:
+    com.stockguide: INFO
+    org.springframework.security: WARN
