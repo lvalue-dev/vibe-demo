@@ -10,8 +10,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: false
+      ddl-auto: create-drop   # 로컬: 앱 시작 시 테이블 생성, 종료 시 삭제
+    show-sql: true
 
 cors:
   allowed-origins: http://localhost:5173,http://localhost:3000
