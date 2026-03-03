@@ -51,6 +51,11 @@ stock:
 cors:
   allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
 
+kis:
+  app-key: ${KIS_APP_KEY:}
+  app-secret: ${KIS_APP_SECRET:}
+  mode: ${KIS_MODE:paper}
+
 logging:
   level:
     com.stockguide: DEBUG

@@ -18,7 +18,12 @@ cors:
 
 stock:
   collector:
-    enabled: false   # 로컬에서는 자동 수집 끔 (Yahoo API 호출 최소화)
+    enabled: false   # 로컬에서는 자동 수집 끔 (KIS API 호출 최소화)
+
+kis:
+  app-key: PSfP6GSy0V9HbLA2G3956lmSseBHYhPw0qdJ
+  app-secret: "gv1WZJ9PiaJuC3JYFz4/JZuXYbLxIURKFf+Oq9W1KWRGP9R558klo1vZuhAJOD90XH9wZSy527/X/Oxm4MIlJyPCmb/pyGOZuKng2UIQv/LqZDiccULwaDEPVAbEQgmDzRukhijd8Wh1K975kb/CKj002tZRes10fjvvc0FA/oz3f1J0Gmg="
+  mode: paper
 
 logging:
   level:
