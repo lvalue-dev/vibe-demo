@@ -79,9 +79,12 @@ async function refreshCache(): Promise<void> {
       }
     }
   } else {
-    // KIS 미설정: Yahoo Finance 병렬 (외부 API라 rate limit 없음)
-    const batch = await Promise.all(symbols.map(fetchOne))
-    batch.forEach(item => { if (item) results.push(item) })
+    // KIS 미설정: Yahoo Finance - rate limit 방지를 위해 20개씩 배치 처리
+    for (let i = 0; i < symbols.length; i += 20) {
+      const batchResults = await Promise.all(symbols.slice(i, i + 20).map(fetchOne))
+      batchResults.forEach(item => { if (item) results.push(item) })
+      if (i + 20 < symbols.length) await sleep(300)
+    }
   }
 
   if (results.length > 0) {
