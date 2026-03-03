@@ -17,23 +17,7 @@ async function getStocks(): Promise<StockListItem[]> {
 async function getDetail(symbol: string): Promise<StockDetail> {
   if (USE_MOCK_BACKEND) return fetchRealStockDetail(symbol)
   if (isBackendEnabled) {
-    try {
-      const data = await fetchDetailFromBackend(symbol)
-      // 백엔드가 투자자 데이터를 못 채운 경우 YF 데이터로 보완
-      if (!data.institutionalFlow?.length || !data.chartData?.length) {
-        const yf = await fetchRealStockDetail(symbol).catch(() => null)
-        if (yf) {
-          data.chartData        = data.chartData?.length        ? data.chartData        : yf.chartData
-          data.institutionalFlow = data.institutionalFlow?.length ? data.institutionalFlow : yf.institutionalFlow
-          data.institutionSummary = yf.institutionSummary
-          data.institutionDaily   = yf.institutionDaily
-          data.institutionPlayers = yf.institutionPlayers
-        }
-      }
-      return data
-    } catch (e) {
-      console.warn('[stockApi] backend detail failed, falling back to Yahoo', e)
-    }
+    return fetchDetailFromBackend(symbol)  // 백엔드 전용 모드: Yahoo fallback 없음
   }
   return fetchRealStockDetail(symbol)
 }
