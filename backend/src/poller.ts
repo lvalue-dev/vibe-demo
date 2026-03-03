@@ -2,11 +2,11 @@
  * 실시간 가격 폴링 루프.
  *
  * KIS REST 유량 제한:
- *   - 모의투자(paper): 초당 2건 → 종목당 500ms 간격
+ *   - 모의투자(paper): 초당 1건 → 종목당 1000ms 간격
  *   - 실전투자(real):  초당 20건 → 배치 10개씩 500ms 간격
  *
  * 165개 종목 기준 한 사이클 소요 시간:
- *   - paper: 165 × 500ms ≈ 82초 → 다음 사이클은 5초 후 시작
+ *   - paper: 165 × 1000ms ≈ 165초 → 다음 사이클은 30초 후 시작
  *   - real:  ceil(165/10) × 500ms = 8.5초 → 다음 사이클은 5초 후 시작
  *
  * 폴러가 캐시(GET /api/stocks)도 겸함 → KIS 중복 호출 없음
@@ -54,10 +54,10 @@ async function pollOne(sym: string): Promise<void> {
 async function pollAll(): Promise<void> {
   // 캐시 갱신은 클라이언트 유무와 무관하게 항상 실행
   if (isPaper()) {
-    // 모의투자: 1건씩 순차 처리, 건당 500ms 대기 (초당 2건 이하)
+    // 모의투자: 1건씩 순차 처리, 건당 1000ms 대기 (초당 1건 이하 → rate limit 준수)
     for (let i = 0; i < SYMBOLS.length; i++) {
       await pollOne(SYMBOLS[i])
-      if (i < SYMBOLS.length - 1) await sleep(500)
+      if (i < SYMBOLS.length - 1) await sleep(1000)
     }
   } else {
     // 실전투자: 10개씩 병렬 처리, 배치당 500ms 대기 (초당 ≤20건)
@@ -70,9 +70,11 @@ async function pollAll(): Promise<void> {
 }
 
 function scheduleNext(): void {
-  // 장 중이면 5초 후 재시도, 장 외면 60초 (paper 사이클이 ~82초라 겹침 방지)
+  // 장 중이면 30초 후 재시도, 장 외면 300초 (paper 사이클이 ~165초라 겹침 방지)
   const anyOpen = SYMBOLS.some(sym => isMarketOpen(parseYfSymbol(sym).market))
-  const gap = anyOpen ? 5000 : 60000
+  const gap = isPaper()
+    ? (anyOpen ? 30000 : 300000)   // paper: 사이클 ~165초 + 장중 30초 대기
+    : (anyOpen ? 5000  : 60000)    // real:  사이클 ~9초 + 장중 5초 대기
 
   pollerTimer = setTimeout(async () => {
     await pollAll()

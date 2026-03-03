@@ -37,8 +37,10 @@ export async function getDomesticPrice(code: string): Promise<DomesticPrice | nu
       high:       Number(o.stck_hgpr),
       low:        Number(o.stck_lwpr),
     }
-  } catch (err) {
-    console.error('[KIS domestic price]', code, (err as Error).message)
+  } catch (err: unknown) {
+    const e = err as { response?: { status: number; data?: { rt_cd?: string; msg1?: string } }; message: string }
+    const detail = e.response?.data?.msg1 ?? e.message
+    console.error(`[KIS domestic price] ${code} HTTP=${e.response?.status ?? '?'} msg="${detail}"`)
     return null
   }
 }
