@@ -1,14 +1,9 @@
 /**
  * 종목 목록 인메모리 캐시.
- * - 서버 시작 시 백그라운드에서 초기 로드
- * - 이후 1분마다 갱신 (장중) / 5분마다 (장 외)
- * - GET /api/stocks 는 캐시를 즉시 반환 → cold start 이후 첫 요청도 빠름
+ * - 서버 시작 시 STOCK_INFO 전체를 placeholder(가격 0)로 초기화
+ * - poller.ts 가 가격을 조회할 때마다 updateCacheEntry() 로 갱신
+ * - GET /api/stocks 는 캐시를 즉시 반환 → KIS 중복 호출 없음
  */
-import { isKisConfigured } from './kis/auth'
-import { getDomesticPrice } from './kis/domestic'
-import { getOverseasPrice } from './kis/overseas'
-import { parseYfSymbol, isMarketOpen } from './kis/symbols'
-import { yfQuote } from './yahoo/proxy'
 import { STOCK_INFO } from './stockInfo'
 
 export interface CachedStock {
@@ -27,96 +22,43 @@ export interface CachedStock {
   analyzedAt: null
 }
 
-let cache: CachedStock[] = []
+// symbol → CachedStock 맵 (빠른 업데이트)
+const cacheMap = new Map<string, CachedStock>()
 let lastUpdated = 0
-let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)) }
-
-async function fetchOne(sym: string): Promise<CachedStock | null> {
+/** poller / cache refresh 에서 호출: 개별 종목 가격 갱신 */
+export function updateCacheEntry(
+  sym: string,
+  price: number,
+  prevClose: number,
+  changeRate: number,
+  volume: number,
+): void {
   const info = STOCK_INFO[sym]
-  const kisInfo = parseYfSymbol(sym)
-  try {
-    let price: number, prevClose: number, changeRate: number, volume: number
-    if (isKisConfigured()) {
-      const q = kisInfo.type === 'domestic'
-        ? await getDomesticPrice(kisInfo.code)
-        : await getOverseasPrice(kisInfo.exchange!, kisInfo.code)
-      if (!q) return null
-      price = q.price; prevClose = q.prevClose; changeRate = q.changeRate; volume = q.volume
-    } else {
-      const q = await yfQuote(sym)
-      if (!q) return null
-      price = q.price; prevClose = q.prevClose; changeRate = q.changeRate; volume = q.volume
-    }
-    return {
-      symbol: sym, name: info.name, market: info.market,
-      currentPrice: price, prevClose, priceChangeRate: changeRate, volume,
-      recommendation: null, recommendationLabel: '-', score: null, risk: null, riskLabel: '-', analyzedAt: null,
-    }
-  } catch { return null }
+  if (!info) return
+  cacheMap.set(sym, {
+    symbol: sym, name: info.name, market: info.market,
+    currentPrice: price, prevClose, priceChangeRate: changeRate, volume,
+    recommendation: null, recommendationLabel: '-',
+    score: null, risk: null, riskLabel: '-', analyzedAt: null,
+  })
+  lastUpdated = Date.now()
 }
 
-async function refreshCache(): Promise<void> {
-  const symbols = Object.keys(STOCK_INFO)
-  const results: CachedStock[] = []
-
-  if (isKisConfigured()) {
-    // Paper 모드: 초당 2건 제한 → 500ms 간격으로 순차 처리
-    const isPaper = (process.env.KIS_MODE ?? 'paper') !== 'real'
-    if (isPaper) {
-      for (let i = 0; i < symbols.length; i++) {
-        const item = await fetchOne(symbols[i])
-        if (item) results.push(item)
-        if (i < symbols.length - 1) await sleep(500)
-      }
-    } else {
-      // Real 모드: 10개씩 병렬
-      for (let i = 0; i < symbols.length; i += 10) {
-        const batch = await Promise.all(symbols.slice(i, i + 10).map(fetchOne))
-        batch.forEach(item => { if (item) results.push(item) })
-        if (i + 10 < symbols.length) await sleep(500)
-      }
-    }
-  } else {
-    // KIS 미설정: Yahoo Finance - rate limit 방지를 위해 20개씩 배치 처리
-    for (let i = 0; i < symbols.length; i += 20) {
-      const batchResults = await Promise.all(symbols.slice(i, i + 20).map(fetchOne))
-      batchResults.forEach(item => { if (item) results.push(item) })
-      if (i + 20 < symbols.length) await sleep(300)
-    }
-  }
-
-  if (results.length > 0) {
-    cache = results
-    lastUpdated = Date.now()
-    console.log(`[Cache] Updated: ${results.length} stocks`)
-  }
+/** 전체 캐시 반환 (가격이 한 번이라도 조회된 종목만) */
+export function getCache(): CachedStock[] {
+  return Array.from(cacheMap.values())
 }
 
-function scheduleRefresh(): void {
-  const anyOpen = Object.keys(STOCK_INFO).some(sym =>
-    isMarketOpen(parseYfSymbol(sym).market)
-  )
-  const interval = anyOpen ? 60_000 : 300_000  // 장중 1분, 장 외 5분
-  refreshTimer = setTimeout(async () => {
-    await refreshCache().catch(e => console.error('[Cache] refresh error:', e))
-    scheduleRefresh()
-  }, interval)
+export function getCacheAge(): number {
+  return lastUpdated ? Date.now() - lastUpdated : -1
 }
 
-export function getCache(): CachedStock[] { return cache }
-export function getCacheAge(): number { return lastUpdated ? Date.now() - lastUpdated : -1 }
-
+/** 서버 시작 시 호출 – placeholder 없이 빈 맵으로 시작, poller 가 채움 */
 export function startCache(): void {
-  console.log('[Cache] Starting background stock cache...')
-  // 서버 시작 3초 후 첫 로드 (서버가 완전히 뜬 후)
-  setTimeout(async () => {
-    await refreshCache().catch(e => console.error('[Cache] initial load error:', e))
-    scheduleRefresh()
-  }, 3000)
+  console.log('[Cache] Ready – will be populated by poller')
 }
 
 export function stopCache(): void {
-  if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null }
+  // poller 가 멈추면 캐시도 더 이상 갱신 안 됨 (별도 타이머 없음)
 }
