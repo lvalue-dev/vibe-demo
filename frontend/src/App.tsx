@@ -27,7 +27,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/vibe-demo">
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <div className="min-h-screen bg-gray-50">
           <Navbar />
           <main>
