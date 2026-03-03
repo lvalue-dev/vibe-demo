@@ -107,7 +107,7 @@ export default function Home() {
           <p className="text-sm">데이터 불러오는 중...</p>
           {isBackendEnabled && (
             <p className="text-xs text-gray-300 mt-2">
-              서버 첫 접속 시 30~60초 소요될 수 있습니다
+              서버 첫 시작 시 KIS 데이터 로딩에 2~3분 소요될 수 있습니다
             </p>
           )}
         </div>

@@ -19,17 +19,19 @@ export async function checkHealth(): Promise<boolean> {
 
 // ── 종목 목록 ─────────────────────────────────────────────────────────────────
 export async function fetchStocksFromBackend(): Promise<StockListItem[]> {
-  // 65초 타임아웃: Render 무료 티어 cold start(~60초) 대응
-  const res = await fetch(`${BASE}/api/stocks`, { signal: AbortSignal.timeout(65000) })
-  if (res.status === 503) {
-    // 캐시 준비 중 → 5초 후 재시도
-    await new Promise(r => setTimeout(r, 5000))
+  const res = await fetch(`${BASE}/api/stocks`, { signal: AbortSignal.timeout(30000) })
+  if (res.ok) return res.json()
+  if (res.status !== 503) throw new Error(`Backend stocks failed: ${res.status}`)
+
+  // 503: KIS 첫 폴링 사이클 진행 중 (paper 모드 ~165초)
+  // → 15초 간격으로 최대 12회 재시도 (총 180초 대기)
+  for (let i = 0; i < 12; i++) {
+    await new Promise(r => setTimeout(r, 15000))
     const retry = await fetch(`${BASE}/api/stocks`, { signal: AbortSignal.timeout(30000) })
-    if (!retry.ok) throw new Error(`Backend stocks failed: ${retry.status}`)
-    return retry.json()
+    if (retry.ok) return retry.json()
+    if (retry.status !== 503) throw new Error(`Backend stocks failed: ${retry.status}`)
   }
-  if (!res.ok) throw new Error(`Backend stocks failed: ${res.status}`)
-  return res.json()
+  throw new Error('서버 캐시 준비 시간 초과 (3분)')
 }
 
 // ── 종목 상세 ─────────────────────────────────────────────────────────────────

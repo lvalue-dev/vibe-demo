@@ -9,9 +9,7 @@ const USE_MOCK_BACKEND = !import.meta.env.PROD && import.meta.env.VITE_USE_MOCK 
 async function getStocks(): Promise<StockListItem[]> {
   if (USE_MOCK_BACKEND) return []
   if (isBackendEnabled) {
-    try { return await fetchStocksFromBackend() } catch (e) {
-      console.warn('[stockApi] backend failed, falling back to Yahoo', e)
-    }
+    return fetchStocksFromBackend()  // 백엔드 전용 모드: Yahoo fallback 없음
   }
   return fetchRealStocks()
 }
