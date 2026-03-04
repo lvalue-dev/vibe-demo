@@ -271,6 +271,47 @@ function buildInstitutionalFlow(
   })
 }
 
+// ── 백엔드 chartData로 투자자 동향 데이터 생성 (Yahoo 불필요) ─────────────────
+export function buildInstitutionalDataFromChart(
+  chartData: { time: string; price: number; volume: number }[],
+  symbol: string,
+  refPrice: number,
+): {
+  institutionalFlow: InstitutionalFlow[]
+  institutionDaily: InstitutionDailyRow[]
+  institutionSummary: InstitutionTypeSummary[]
+  institutionPlayers: InstitutionPlayer[]
+} {
+  const seed0 = symbolSeed(symbol)
+
+  const flow: InstitutionalFlow[] = chartData.map((c, i) => {
+    const vol = c.volume ?? 0
+    const tradVal = vol * refPrice
+
+    const r1 = seededRand(seed0 + i * 13 + 1)
+    const r2 = seededRand(seed0 + i * 13 + 2)
+    const r3 = seededRand(seed0 + i * 13 + 3)
+    const r4 = seededRand(seed0 + i * 13 + 4)
+
+    const dir = r1 > 0.5 ? 1 : -1
+    const mag = 0.2 + 0.6 * seededRand(seed0 + i * 13 + 5)
+
+    const instSign = dir * (r1 > 0.25 ? 1 : -1)
+    const fgnSign  = dir * (r2 > 0.35 ? 1 : -1) * (r3 > 0.5 ? 1 : -0.6)
+    const institutional = Math.round(instSign * (0.02 + 0.06 * r1) * (0.5 + mag) * tradVal)
+    const foreign       = Math.round(fgnSign  * (0.015 + 0.04 * r2) * (0.4 + mag) * tradVal)
+    const individual    = Math.round(-(institutional + foreign) * (0.8 + 0.4 * r4))
+
+    return { date: c.time, institutional, foreign, individual }
+  })
+
+  const daily   = buildInstitutionDaily(flow, symbol)
+  const summary = buildInstitutionSummary(daily)
+  const players = buildInstitutionPlayers(summary, symbol)
+
+  return { institutionalFlow: flow, institutionDaily: daily, institutionSummary: summary, institutionPlayers: players }
+}
+
 // ── Yahoo Finance fetcher: 직접 + 프록시 2개 동시 경쟁 ─────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchYahoo(symbol: string, range: string, interval: string): Promise<any | null> {

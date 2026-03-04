@@ -3,10 +3,13 @@
  * VITE_BACKEND_URL 이 설정되면 백엔드 우선, 없으면 Yahoo Finance 직접 사용.
  */
 import type { StockListItem, StockDetail } from '../types'
+import { buildInstitutionalDataFromChart } from './finnhubApi'
 
 const BASE = import.meta.env.VITE_BACKEND_URL ?? ''
 
 export const isBackendEnabled = !!BASE
+
+console.log('[backendApi] VITE_BACKEND_URL:', BASE || '(미설정)', '| isBackendEnabled:', !!BASE)
 
 // ── 헬스체크 ──────────────────────────────────────────────────────────────────
 export async function checkHealth(): Promise<boolean> {
@@ -42,7 +45,12 @@ export async function fetchDetailFromBackend(symbol: string): Promise<StockDetai
   if (!res.ok) throw new Error(`Backend detail failed: ${res.status}`)
   const data = await res.json()
 
-  // 백엔드가 투자자 데이터를 반환하지 않는 경우 프론트 시드 데이터로 채움
+  // 백엔드가 투자자 데이터를 반환하지 않으면 chartData 기반 시드 데이터로 채움
+  if (!data.institutionalFlow?.length && data.chartData?.length) {
+    const inst = buildInstitutionalDataFromChart(data.chartData, symbol, data.currentPrice)
+    Object.assign(data, inst)
+  }
+
   return data as StockDetail
 }
 
