@@ -1,7 +1,9 @@
 package com.stockguide.config;
 
+import com.stockguide.collector.StockDataCollector;
 import com.stockguide.domain.entity.Stock;
 import com.stockguide.repository.StockRepository;
+import com.stockguide.service.StockAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationRunner;
@@ -20,6 +22,8 @@ import java.util.List;
 public class DataInitializer {
 
     private final StockRepository stockRepository;
+    private final StockDataCollector stockDataCollector;
+    private final StockAnalysisService stockAnalysisService;
 
     @Bean
     public ApplicationRunner initStocks() {
@@ -218,6 +222,16 @@ public class DataInitializer {
                     log.info("Initialized stock: {}", stock.getSymbol());
                 }
             });
+
+            // 시작 시 즉시 가격 수집 + 분석 실행 (스케줄러 첫 실행 전에 데이터 확보)
+            log.info("Starting initial price collection...");
+            try {
+                stockDataCollector.collectAll();
+                stockAnalysisService.analyzeAll();
+                log.info("Initial price collection and analysis completed.");
+            } catch (Exception e) {
+                log.warn("Initial collection failed (non-fatal): {}", e.getMessage());
+            }
         };
     }
 }

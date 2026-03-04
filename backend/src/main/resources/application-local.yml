@@ -10,7 +10,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create-drop   # 로컬: 앱 시작 시 테이블 생성, 종료 시 삭제
+      ddl-auto: update   # 로컬: 테이블 없으면 생성, 데이터 유지
     show-sql: true
 
 cors:
@@ -18,7 +18,7 @@ cors:
 
 stock:
   collector:
-    enabled: false   # 로컬에서는 자동 수집 끔 (KIS API 호출 최소화)
+    enabled: true   # 로컬에서도 KIS API 수집 활성화
 
 kis:
   app-key: PSfP6GSy0V9HbLA2G3956lmSseBHYhPw0qdJ
