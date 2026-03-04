@@ -1,28 +1,16 @@
 import { mockApi } from './mockData'
-import { fetchRealStocks, fetchRealStockDetail } from './finnhubApi'
-import { fetchStocksFromBackend, fetchDetailFromBackend, isBackendEnabled } from './backendApi'
+import { fetchStocksFromBackend, fetchDetailFromBackend } from './backendApi'
 import type { Analysis, AuthResponse, PortfolioItem, StockDetail, StockListItem, WatchlistItem } from '../types'
 
-// 백엔드가 설정돼 있으면 백엔드 우선, 없으면 Yahoo Finance 직접
-const USE_MOCK_BACKEND = !import.meta.env.PROD && import.meta.env.VITE_USE_MOCK === 'true'
-
+// ─── Stocks ────────────────────────────────────────────────────────────────────
 async function getStocks(): Promise<StockListItem[]> {
-  if (USE_MOCK_BACKEND) return []
-  if (isBackendEnabled) {
-    return fetchStocksFromBackend()  // 백엔드 전용 모드: Yahoo fallback 없음
-  }
-  return fetchRealStocks()
+  return fetchStocksFromBackend()
 }
 
 async function getDetail(symbol: string): Promise<StockDetail> {
-  if (USE_MOCK_BACKEND) return fetchRealStockDetail(symbol)
-  if (isBackendEnabled) {
-    return fetchDetailFromBackend(symbol)  // 백엔드 전용 모드: Yahoo fallback 없음
-  }
-  return fetchRealStockDetail(symbol)
+  return fetchDetailFromBackend(symbol)
 }
 
-// ─── Stocks ────────────────────────────────────────────────────────────────────
 export const stockApi = {
   getAll: getStocks,
   getDetail,

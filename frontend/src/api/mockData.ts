@@ -1,13 +1,13 @@
 import type { WatchlistItem, PortfolioItem, AuthResponse } from '../types'
+import { fetchStocksFromBackend } from './backendApi'
 
 // In-memory state (초기 빈 상태 — 더미 데이터 없음)
 const watchlistSymbols: string[] = []
 const portfolioItems: Array<{ symbol: string; avgPrice: number; quantity: number }> = []
 
-// 실시간 주식 데이터 (캐시 활용)
+// Spring 백엔드에서 현재가 조회
 async function getStockData() {
-  const { fetchRealStocks } = await import('./finnhubApi')
-  return fetchRealStocks()
+  return fetchStocksFromBackend()
 }
 
 export const mockApi = {
