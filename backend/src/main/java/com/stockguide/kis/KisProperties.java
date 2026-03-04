@@ -25,4 +25,11 @@ public class KisProperties {
             ? "https://openapi.koreainvestment.com:9443"
             : "https://openapivts.koreainvestment.com:9443";
     }
+
+    /** WebSocket 접속 URL (H0STCNT0 등 실시간 체결) */
+    public String wsUrl() {
+        return "real".equals(mode)
+            ? "ws://ops.koreainvestment.com:21000"
+            : "ws://ops.koreainvestment.com:31000";
+    }
 }

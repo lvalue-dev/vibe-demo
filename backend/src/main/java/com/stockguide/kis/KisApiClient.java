@@ -2,6 +2,8 @@ package com.stockguide.kis;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -33,6 +35,11 @@ public class KisApiClient {
     private final KisTokenService tokenService;
     private final WebClient webClient;
 
+    /** 실시간 WebSocket 캐시 (선택적 - 없어도 REST 폴백 동작) */
+    @Autowired(required = false)
+    @Nullable
+    private KisWebSocketService wsService;
+
     public record KisPrice(
         BigDecimal price,
         BigDecimal prevClose,
@@ -56,6 +63,14 @@ public class KisApiClient {
 
     @SuppressWarnings("unchecked")
     private KisPrice fetchDomestic(String code) {
+        // 실시간 WebSocket 데이터가 있으면 우선 사용
+        if (wsService != null) {
+            KisPrice rt = wsService.getLatestPrice(code);
+            if (rt != null && rt.price() != null) {
+                log.debug("[KIS] {} 실시간 캐시 사용: {}", code, rt.price());
+                return rt;
+            }
+        }
         try {
             Map<String, Object> response = webClient.get()
                 .uri(props.baseUrl() + "/uapi/domestic-stock/v1/quotations/inquire-price"
