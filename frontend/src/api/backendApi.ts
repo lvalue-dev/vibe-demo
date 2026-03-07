@@ -18,8 +18,8 @@ export async function fetchStocksFromBackend(): Promise<StockListItem[]> {
 }
 
 // ── 종목 상세 ─────────────────────────────────────────────────────────────────
-export async function fetchDetailFromBackend(symbol: string): Promise<StockDetail> {
-  const res = await fetch(`${BASE}/stocks/${encodeURIComponent(symbol)}`, {
+export async function fetchDetailFromBackend(symbol: string, period = 'daily'): Promise<StockDetail> {
+  const res = await fetch(`${BASE}/stocks/${encodeURIComponent(symbol)}?period=${period}`, {
     signal: AbortSignal.timeout(15000),
   })
   if (!res.ok) throw new Error(`Backend detail failed: ${res.status}`)

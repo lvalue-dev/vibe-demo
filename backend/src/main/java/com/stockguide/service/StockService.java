@@ -19,11 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -44,7 +45,7 @@ public class StockService {
                 .toList();
     }
 
-    public StockDetailResponse getStockDetail(String symbol) {
+    public StockDetailResponse getStockDetail(String symbol, String period) {
         Stock stock = stockRepository.findBySymbol(symbol.toUpperCase())
                 .orElseThrow(() -> new IllegalArgumentException("종목을 찾을 수 없습니다: " + symbol));
 
@@ -54,10 +55,18 @@ public class StockService {
         StockAnalysis latestAnalysis = analysisRepository.findTopByStockOrderByCreatedAtDesc(stock)
                 .orElse(null);
 
-        List<StockPrice> chartPrices = stockPriceRepository.findByStockAndTimestampAfter(
-                stock, LocalDateTime.now().minusDays(30));
+        LocalDateTime since = switch (period) {
+            case "weekly"   -> LocalDateTime.now().minusDays(365);
+            case "intraday" -> LocalDateTime.now().minusDays(3);
+            default         -> LocalDateTime.now().minusDays(90);
+        };
+        List<StockPrice> prices = stockPriceRepository.findByStockAndTimestampAfter(stock, since);
 
-        List<StockDetailResponse.PricePoint> chartData = buildChartData(chartPrices);
+        List<StockDetailResponse.PricePoint> chartData = switch (period) {
+            case "intraday" -> buildIntradayChartData(prices);
+            case "weekly"   -> buildWeeklyChartData(prices);
+            default         -> buildDailyChartData(prices);
+        };
 
         return buildStockDetailResponse(stock, latestPrice, latestAnalysis, chartData);
     }
@@ -161,18 +170,89 @@ public class StockService {
                 .build();
     }
 
-    private List<StockDetailResponse.PricePoint> buildChartData(List<StockPrice> prices) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd HH:mm");
-        List<StockDetailResponse.PricePoint> points = new ArrayList<>();
+    /** 일봉: 날짜별 마지막 가격 + 롤링 MA5/MA20 */
+    private List<StockDetailResponse.PricePoint> buildDailyChartData(List<StockPrice> prices) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("MM-dd");
 
-        for (int i = 0; i < prices.size(); i++) {
-            StockPrice p = prices.get(i);
+        Map<LocalDate, StockPrice> dailyMap = new LinkedHashMap<>();
+        for (StockPrice p : prices) {
+            dailyMap.put(p.getTimestamp().toLocalDate(), p);
+        }
+        List<Map.Entry<LocalDate, StockPrice>> sorted = new ArrayList<>(dailyMap.entrySet());
+        sorted.sort(Map.Entry.comparingByKey());
+
+        List<BigDecimal> closes = sorted.stream().map(e -> e.getValue().getPrice()).collect(Collectors.toList());
+
+        List<StockDetailResponse.PricePoint> points = new ArrayList<>();
+        for (int i = 0; i < sorted.size(); i++) {
+            StockPrice p = sorted.get(i).getValue();
             points.add(StockDetailResponse.PricePoint.builder()
-                    .time(p.getTimestamp().format(formatter))
+                    .time(p.getTimestamp().format(fmt))
                     .price(p.getPrice())
+                    .ma5(i  >= 4  ? rollingAvg(closes, i, 5)  : null)
+                    .ma20(i >= 19 ? rollingAvg(closes, i, 20) : null)
                     .volume(p.getVolume())
                     .build());
         }
         return points;
     }
+
+    /** 주봉: 주별 마지막 가격 + 롤링 MA5/MA20 (5주/20주) */
+    private List<StockDetailResponse.PricePoint> buildWeeklyChartData(List<StockPrice> prices) {
+        DateTimeFormatter labelFmt = DateTimeFormatter.ofPattern("MM/dd");
+        DateTimeFormatter keyFmt   = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+        Map<String, StockPrice> weeklyMap = new LinkedHashMap<>();
+        for (StockPrice p : prices) {
+            String weekKey = p.getTimestamp().toLocalDate().with(DayOfWeek.MONDAY).format(keyFmt);
+            weeklyMap.put(weekKey, p);
+        }
+        List<Map.Entry<String, StockPrice>> sorted = new ArrayList<>(weeklyMap.entrySet());
+        sorted.sort(Map.Entry.comparingByKey());
+
+        List<BigDecimal> closes = sorted.stream().map(e -> e.getValue().getPrice()).collect(Collectors.toList());
+
+        List<StockDetailResponse.PricePoint> points = new ArrayList<>();
+        for (int i = 0; i < sorted.size(); i++) {
+            StockPrice p = sorted.get(i).getValue();
+            LocalDate monday = p.getTimestamp().toLocalDate().with(DayOfWeek.MONDAY);
+            points.add(StockDetailResponse.PricePoint.builder()
+                    .time(monday.format(labelFmt))
+                    .price(p.getPrice())
+                    .ma5(i  >= 4  ? rollingAvg(closes, i, 5)  : null)
+                    .ma20(i >= 19 ? rollingAvg(closes, i, 20) : null)
+                    .volume(p.getVolume())
+                    .build());
+        }
+        return points;
+    }
+
+    /** 분봉: 가장 최근 거래일 데이터만 HH:mm 포맷 */
+    private List<StockDetailResponse.PricePoint> buildIntradayChartData(List<StockPrice> prices) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
+
+        Optional<LocalDate> latestDate = prices.stream()
+                .map(p -> p.getTimestamp().toLocalDate())
+                .max(Comparator.naturalOrder());
+        if (latestDate.isEmpty()) return List.of();
+
+        return prices.stream()
+                .filter(p -> p.getTimestamp().toLocalDate().equals(latestDate.get()))
+                .sorted(Comparator.comparing(StockPrice::getTimestamp))
+                .map(p -> StockDetailResponse.PricePoint.builder()
+                        .time(p.getTimestamp().format(fmt))
+                        .price(p.getPrice())
+                        .volume(p.getVolume())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    private BigDecimal rollingAvg(List<BigDecimal> closes, int endIdx, int window) {
+        List<BigDecimal> slice = closes.subList(endIdx - window + 1, endIdx + 1);
+        return slice.stream()
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(slice.size()), 2, RoundingMode.HALF_UP);
+    }
 }
+

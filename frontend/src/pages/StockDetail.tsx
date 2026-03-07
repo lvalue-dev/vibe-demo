@@ -13,11 +13,18 @@ import { useAuthStore } from '../store/authStore'
 import { formatChange, formatPriceWithCurrency, formatVolume, RECOMMENDATION_COLORS } from '../utils/format'
 
 type Tab = 'price' | 'volume' | 'investor'
+type Period = 'daily' | 'weekly' | 'intraday'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'price',    label: '가격 차트' },
   { key: 'volume',   label: '거래량 분석' },
   { key: 'investor', label: '투자자 동향' },
+]
+
+const PERIODS: { key: Period; label: string }[] = [
+  { key: 'daily',    label: '일봉' },
+  { key: 'weekly',   label: '주봉' },
+  { key: 'intraday', label: '분봉' },
 ]
 
 export default function StockDetail() {
@@ -26,10 +33,11 @@ export default function StockDetail() {
   const { isAuthenticated } = useAuthStore()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('price')
+  const [period, setPeriod] = useState<Period>('daily')
 
   const { data: stock, isLoading, isError } = useQuery({
-    queryKey: ['stock', symbol],
-    queryFn: () => stockApi.getDetail(symbol!),
+    queryKey: ['stock', symbol, period],
+    queryFn: () => stockApi.getDetail(symbol!, period),
     enabled: !!symbol,
     refetchInterval: 60_000,
   })
@@ -185,11 +193,27 @@ export default function StockDetail() {
         {tab === 'price' && (
           <div className="space-y-5">
             <div>
-              <p className="text-sm font-bold text-gray-800 mb-1">가격 차트</p>
-              <p className="text-xs text-gray-400 mb-4">
-                {stock.chartData.length > 0 && stock.chartData[0].time.includes(':')
-                  ? '당일 5분봉 · MA5 / MA20'
-                  : '최근 20일 일봉 · MA5 / MA20'}
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-bold text-gray-800">가격 차트</p>
+                {/* 기간 선택 버튼 */}
+                <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                  {PERIODS.map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setPeriod(key)}
+                      className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                        period === key
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mb-3">
+                {period === 'intraday' ? '당일 분봉' : period === 'weekly' ? '주봉 · MA5 / MA20' : '일봉 · MA5 / MA20'}
               </p>
               <StockChart data={stock.chartData} ma5={stock.ma5} ma20={stock.ma20} />
             </div>

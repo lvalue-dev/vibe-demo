@@ -23,8 +23,10 @@ public class StockController {
     }
 
     @GetMapping("/{symbol}")
-    public ResponseEntity<StockDetailResponse> getStockDetail(@PathVariable String symbol) {
-        return ResponseEntity.ok(stockService.getStockDetail(symbol));
+    public ResponseEntity<StockDetailResponse> getStockDetail(
+            @PathVariable String symbol,
+            @RequestParam(defaultValue = "daily") String period) {
+        return ResponseEntity.ok(stockService.getStockDetail(symbol, period));
     }
 
     @GetMapping("/{symbol}/analysis")

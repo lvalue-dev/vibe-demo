@@ -7,8 +7,8 @@ async function getStocks(): Promise<StockListItem[]> {
   return fetchStocksFromBackend()
 }
 
-async function getDetail(symbol: string): Promise<StockDetail> {
-  return fetchDetailFromBackend(symbol)
+async function getDetail(symbol: string, period = 'daily'): Promise<StockDetail> {
+  return fetchDetailFromBackend(symbol, period)
 }
 
 export const stockApi = {
