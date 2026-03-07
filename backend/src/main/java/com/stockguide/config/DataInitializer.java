@@ -232,6 +232,16 @@ public class DataInitializer {
             } catch (Exception e) {
                 log.warn("Initial collection failed (non-fatal): {}", e.getMessage());
             }
+
+            // 30일치 일봉 데이터 백필 (데이터가 부족한 종목만 실행)
+            log.info("Starting historical data backfill...");
+            try {
+                stockDataCollector.backfillAll();
+                stockAnalysisService.analyzeAll();
+                log.info("Historical backfill completed.");
+            } catch (Exception e) {
+                log.warn("Backfill failed (non-fatal): {}", e.getMessage());
+            }
         };
     }
 }

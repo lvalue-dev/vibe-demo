@@ -9,6 +9,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,6 +52,123 @@ public class KisApiClient {
         BigDecimal lowPrice,
         long volume
     ) {}
+
+    public record KisDailyPrice(
+        LocalDate date,
+        BigDecimal closePrice,
+        BigDecimal openPrice,
+        BigDecimal highPrice,
+        BigDecimal lowPrice,
+        long volume
+    ) {}
+
+    /** Yahoo Finance 심볼 → 과거 일봉 데이터 조회 (최근 days일) */
+    public List<KisDailyPrice> fetchDailyHistory(String symbol, int days) {
+        if (symbol.endsWith(".KS") || symbol.endsWith(".KQ")) {
+            return fetchDomesticHistory(symbol.substring(0, symbol.length() - 3), days);
+        } else {
+            String exchange = NASDAQ_SET.contains(symbol) ? "NAS" : "NYS";
+            return fetchOverseasHistory(exchange, symbol, days);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<KisDailyPrice> fetchDomesticHistory(String code, int days) {
+        try {
+            String endDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            Map<String, Object> response = webClient.get()
+                .uri(props.baseUrl() + "/uapi/domestic-stock/v1/quotations/inquire-daily-price"
+                    + "?FID_COND_MRKT_DIV_CODE=J"
+                    + "&FID_INPUT_ISCD=" + code
+                    + "&FID_PERIOD_DIV_CODE=D"
+                    + "&FID_ORG_ADJ_PRC=0")
+                .header("authorization", "Bearer " + tokenService.getToken())
+                .header("appkey", props.getAppKey())
+                .header("appsecret", props.getAppSecret())
+                .header("tr_id", "FHKST01010400")
+                .header("custtype", "P")
+                .retrieve()
+                .bodyToMono(Map.class)
+                .onErrorResume(e -> {
+                    log.warn("[KIS] Domestic history error for {}: {}", code, e.getMessage());
+                    return Mono.empty();
+                })
+                .block();
+
+            if (response == null || !"0".equals(response.get("rt_cd"))) return Collections.emptyList();
+
+            List<Map<String, Object>> output2 = (List<Map<String, Object>>) response.get("output2");
+            if (output2 == null) return Collections.emptyList();
+
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyyMMdd");
+            return output2.stream()
+                .limit(days)
+                .filter(o -> o.get("stck_bsop_date") != null && !o.get("stck_bsop_date").toString().isBlank())
+                .map(o -> new KisDailyPrice(
+                    LocalDate.parse(o.get("stck_bsop_date").toString(), fmt),
+                    decimal(o, "stck_clpr"),
+                    decimal(o, "stck_oprc"),
+                    decimal(o, "stck_hgpr"),
+                    decimal(o, "stck_lwpr"),
+                    longVal(o, "acml_vol")
+                ))
+                .filter(p -> p.closePrice() != null && p.closePrice().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+        } catch (Exception e) {
+            log.error("[KIS] Domestic history error for {}: {}", code, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<KisDailyPrice> fetchOverseasHistory(String exchange, String symbol, int days) {
+        try {
+            String endDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            Map<String, Object> response = webClient.get()
+                .uri(props.baseUrl() + "/uapi/overseas-price/v1/quotations/dailyprice"
+                    + "?AUTH="
+                    + "&EXCD=" + exchange
+                    + "&SYMB=" + symbol
+                    + "&GUBN=0"
+                    + "&BYMD=" + endDate
+                    + "&MODP=0")
+                .header("authorization", "Bearer " + tokenService.getToken())
+                .header("appkey", props.getAppKey())
+                .header("appsecret", props.getAppSecret())
+                .header("tr_id", "HHDFS76240000")
+                .header("custtype", "P")
+                .retrieve()
+                .bodyToMono(Map.class)
+                .onErrorResume(e -> {
+                    log.warn("[KIS] Overseas history error for {}/{}: {}", exchange, symbol, e.getMessage());
+                    return Mono.empty();
+                })
+                .block();
+
+            if (response == null || !"0".equals(response.get("rt_cd"))) return Collections.emptyList();
+
+            List<Map<String, Object>> output2 = (List<Map<String, Object>>) response.get("output2");
+            if (output2 == null) return Collections.emptyList();
+
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyyMMdd");
+            return output2.stream()
+                .limit(days)
+                .filter(o -> o.get("xymd") != null && !o.get("xymd").toString().isBlank())
+                .map(o -> new KisDailyPrice(
+                    LocalDate.parse(o.get("xymd").toString(), fmt),
+                    decimal(o, "clos"),
+                    decimal(o, "open"),
+                    decimal(o, "high"),
+                    decimal(o, "low"),
+                    longVal(o, "tvol")
+                ))
+                .filter(p -> p.closePrice() != null && p.closePrice().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+        } catch (Exception e) {
+            log.error("[KIS] Overseas history error for {}/{}: {}", exchange, symbol, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
 
     /** Yahoo Finance 심볼 → KIS 가격 조회 */
     public KisPrice fetchPrice(String symbol) {

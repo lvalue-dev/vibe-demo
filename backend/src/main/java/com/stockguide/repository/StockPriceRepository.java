@@ -30,4 +30,8 @@ public interface StockPriceRepository extends JpaRepository<StockPrice, Long> {
 
     @Query("SELECT AVG(sp.volume) FROM StockPrice sp WHERE sp.stock = :stock AND sp.timestamp >= :since")
     Double findAverageVolumeSince(@Param("stock") Stock stock, @Param("since") LocalDateTime since);
+
+    long countByStock(Stock stock);
+
+    boolean existsByStockAndTimestamp(Stock stock, LocalDateTime timestamp);
 }
