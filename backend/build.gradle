@@ -57,3 +57,17 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+task dockerUp(type: Exec) {
+    group = 'docker'
+    description = 'Start Docker Compose services (PostgreSQL + Redis)'
+    commandLine 'docker', 'compose', '-f', 'docker-compose.local.yml', 'up', '-d'
+}
+
+task dockerDown(type: Exec) {
+    group = 'docker'
+    description = 'Stop Docker Compose services'
+    commandLine 'docker', 'compose', '-f', 'docker-compose.local.yml', 'down'
+}
+
+bootRun.dependsOn dockerUp
