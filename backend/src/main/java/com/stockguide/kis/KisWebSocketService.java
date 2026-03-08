@@ -23,12 +23,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * KIS 국내주식 실시간 체결 WebSocket 서비스 (H0STCNT0)
  *
  * - 앱 시작 시 활성 국내 종목을 자동으로 구독합니다.
  * - 연결이 끊기면 5초 후 자동 재연결합니다.
+ * - 구독 응답이 연속으로 전부 실패하면 재연결을 중단합니다 (모의투자 미지원 등).
  * - 최신 체결 데이터는 {@link #getLatestPrice(String)} 로 조회합니다.
  */
 @Service
@@ -37,6 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class KisWebSocketService implements ApplicationListener<ApplicationReadyEvent> {
 
     private static final String TR_ID = "H0STCNT0";
+    private static final int MAX_ALL_FAIL_SESSIONS = 3;
 
     private final KisProperties props;
     private final KisTokenService tokenService;
@@ -47,6 +50,9 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
     private final ConcurrentHashMap<String, KisApiClient.KisPrice> latestPrices = new ConcurrentHashMap<>();
 
     private final AtomicBoolean running = new AtomicBoolean(false);
+    /** 구독 성공이 0건인 세션이 연속으로 몇 번 발생했는지 */
+    private final AtomicInteger consecutiveAllFailSessions = new AtomicInteger(0);
+
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "kis-ws-reconnect");
         t.setDaemon(true);
@@ -83,6 +89,9 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
             String wsUrl = props.wsUrl();
             log.info("[KIS-WS] 접속 중: {} (종목 {}개)", wsUrl, codes.size());
 
+            // 이 세션에서 구독 성공한 종목 수 추적
+            AtomicInteger sessionSuccessCount = new AtomicInteger(0);
+
             // PONG 전송용 Sink (구독 응답 이후에도 계속 살아있어야 함)
             Sinks.Many<WebSocketMessage> pongSink = Sinks.many().multicast().onBackpressureBuffer();
 
@@ -95,7 +104,7 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
 
                 // 2) 수신 처리 (데이터 파싱 + PONG 전송)
                 Mono<Void> receive = session.receive()
-                    .doOnNext(msg -> handleMessage(msg.getPayloadAsText(), session, pongSink))
+                    .doOnNext(msg -> handleMessage(msg.getPayloadAsText(), session, pongSink, sessionSuccessCount))
                     .then();
 
                 // 3) 구독 메시지 먼저, 이후 PONG 송신 대기
@@ -104,12 +113,7 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
                 return Mono.zip(session.send(output), receive).then();
             })
             .doOnError(e -> log.error("[KIS-WS] 오류: {}", e.getMessage()))
-            .doOnTerminate(() -> {
-                if (running.get()) {
-                    log.warn("[KIS-WS] 연결 종료 - 5초 후 재접속");
-                    scheduler.schedule(this::connectAndSubscribe, 5, TimeUnit.SECONDS);
-                }
-            })
+            .doOnTerminate(() -> scheduleReconnect(sessionSuccessCount.get()))
             .subscribe();
 
         } catch (Exception e) {
@@ -120,11 +124,29 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
         }
     }
 
+    private void scheduleReconnect(int sessionSuccessCount) {
+        if (!running.get()) return;
+
+        if (sessionSuccessCount == 0) {
+            int failCount = consecutiveAllFailSessions.incrementAndGet();
+            if (failCount >= MAX_ALL_FAIL_SESSIONS) {
+                log.warn("[KIS-WS] 구독 실패 {}회 연속 - 실시간 체결 WebSocket 중단 (모의투자 미지원 또는 설정 오류). REST 폴링으로 동작합니다.", failCount);
+                running.set(false);
+                return;
+            }
+            log.info("[KIS-WS] 구독 성공 0건 ({}/{}회) - 5초 후 재접속", failCount, MAX_ALL_FAIL_SESSIONS);
+        } else {
+            consecutiveAllFailSessions.set(0);
+            log.info("[KIS-WS] 연결 종료 (구독 성공: {}건) - 5초 후 재접속", sessionSuccessCount);
+        }
+        scheduler.schedule(this::connectAndSubscribe, 5, TimeUnit.SECONDS);
+    }
+
     private void handleMessage(String payload, org.springframework.web.reactive.socket.WebSocketSession session,
-                                Sinks.Many<WebSocketMessage> pongSink) {
+                                Sinks.Many<WebSocketMessage> pongSink, AtomicInteger sessionSuccessCount) {
         try {
             if (payload.startsWith("{")) {
-                handleJsonMessage(payload, session, pongSink);
+                handleJsonMessage(payload, session, pongSink, sessionSuccessCount);
             } else {
                 handleDataMessage(payload);
             }
@@ -135,7 +157,8 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
 
     private void handleJsonMessage(String payload,
                                     org.springframework.web.reactive.socket.WebSocketSession session,
-                                    Sinks.Many<WebSocketMessage> pongSink) {
+                                    Sinks.Many<WebSocketMessage> pongSink,
+                                    AtomicInteger sessionSuccessCount) {
         try {
             JsonNode node = objectMapper.readTree(payload);
             String trId = node.path("header").path("tr_id").asText();
@@ -152,9 +175,10 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
                 String msg1 = node.path("body").path("msg1").asText();
                 String trKey = node.path("header").path("tr_key").asText();
                 if ("0".equals(rtCd)) {
+                    sessionSuccessCount.incrementAndGet();
                     log.debug("[KIS-WS] 구독 성공: {}", trKey);
                 } else {
-                    log.warn("[KIS-WS] 구독 실패 {}: {}", trKey, msg1);
+                    log.debug("[KIS-WS] 구독 실패 {}: {}", trKey, msg1);
                 }
             }
         } catch (Exception e) {
