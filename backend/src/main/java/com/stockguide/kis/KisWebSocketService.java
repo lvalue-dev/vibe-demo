@@ -3,6 +3,7 @@ package com.stockguide.kis;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stockguide.repository.StockRepository;
+import com.stockguide.service.StockSseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -15,6 +16,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -45,9 +47,13 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
     private final KisTokenService tokenService;
     private final StockRepository stockRepository;
     private final ObjectMapper objectMapper;
+    private final StockSseService sseService;
 
     /** 종목코드 → 최신 실시간 체결 데이터 */
     private final ConcurrentHashMap<String, KisApiClient.KisPrice> latestPrices = new ConcurrentHashMap<>();
+
+    /** KIS 단축종목코드(예: 005930) → Yahoo Finance 심볼(예: 005930.KS) 역매핑 */
+    private final ConcurrentHashMap<String, String> codeToSymbol = new ConcurrentHashMap<>();
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     /** 구독 성공이 0건인 세션이 연속으로 몇 번 발생했는지 */
@@ -209,7 +215,7 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
         String trId = parts[1];
         if (!TR_ID.equals(trId)) return;
 
-        String code     = parts[3];
+        String code      = parts[3];
         BigDecimal price     = decimal(parts, 5);
         BigDecimal open      = decimal(parts, 10);
         BigDecimal high      = decimal(parts, 11);
@@ -220,6 +226,17 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
         KisApiClient.KisPrice kisPrice = new KisApiClient.KisPrice(price, prevClose, open, high, low, volume);
         latestPrices.put(code, kisPrice);
         log.debug("[KIS-WS] {} 체결: {}", code, price);
+
+        // SSE 브로드캐스트: 전일대비율 계산 후 프론트엔드로 전송
+        String yahooSymbol = codeToSymbol.get(code);
+        if (yahooSymbol != null && price != null && prevClose != null
+                && prevClose.compareTo(BigDecimal.ZERO) != 0) {
+            BigDecimal changeRate = price.subtract(prevClose)
+                .divide(prevClose, 6, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(2, RoundingMode.HALF_UP);
+            sseService.publish(yahooSymbol, price, changeRate, volume);
+        }
     }
 
     // ── 구독 메시지 빌더 ────────────────────────────────────────────────────
@@ -234,14 +251,19 @@ public class KisWebSocketService implements ApplicationListener<ApplicationReady
     // ── 국내 종목 코드 추출 ─────────────────────────────────────────────────
 
     private List<String> getDomesticCodes() {
+        codeToSymbol.clear();
         return stockRepository.findByIsActiveTrue().stream()
             .filter(s -> "KOSPI".equals(s.getMarket()) || "KOSDAQ".equals(s.getMarket()))
             .map(s -> {
                 String sym = s.getSymbol();
+                String code;
                 if (sym.endsWith(".KS") || sym.endsWith(".KQ")) {
-                    return sym.substring(0, sym.length() - 3);
+                    code = sym.substring(0, sym.length() - 3);
+                } else {
+                    code = sym;
                 }
-                return sym;
+                codeToSymbol.put(code, sym);
+                return code;
             })
             .distinct()
             .toList();

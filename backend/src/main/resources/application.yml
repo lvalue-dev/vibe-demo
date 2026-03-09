@@ -54,7 +54,7 @@ cors:
 kis:
   app-key: ${KIS_APP_KEY:}
   app-secret: ${KIS_APP_SECRET:}
-  mode: ${KIS_MODE:paper}
+  mode: ${KIS_MODE:real}
 
 logging:
   level:
