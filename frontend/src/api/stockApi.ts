@@ -1,5 +1,5 @@
-import { mockApi } from './mockData'
 import { fetchStocksFromBackend, fetchDetailFromBackend } from './backendApi'
+import client from './client'
 import type { Analysis, AuthResponse, PortfolioItem, StockDetail, StockListItem, WatchlistItem } from '../types'
 
 // ─── Stocks ────────────────────────────────────────────────────────────────────
@@ -33,22 +33,27 @@ export const stockApi = {
 // ─── Auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
   signUp: (data: { email: string; password: string; nickname: string }): Promise<AuthResponse> =>
-    mockApi.signUp(data.email, data.password, data.nickname),
+    client.post<AuthResponse>('/api/auth/signup', data).then(r => r.data),
   signIn: (data: { email: string; password: string }): Promise<AuthResponse> =>
-    mockApi.signIn(data.email, data.password),
+    client.post<AuthResponse>('/api/auth/signin', data).then(r => r.data),
 }
 
 // ─── Watchlist ─────────────────────────────────────────────────────────────────
 export const watchlistApi = {
-  getAll: (): Promise<WatchlistItem[]> => mockApi.getWatchlist(),
-  add:    (symbol: string): Promise<WatchlistItem> => mockApi.addWatchlist(symbol),
-  remove: (symbol: string): Promise<unknown>       => mockApi.removeWatchlist(symbol),
+  getAll: (): Promise<WatchlistItem[]> =>
+    client.get<WatchlistItem[]>('/api/watchlist').then(r => r.data),
+  add: (symbol: string): Promise<WatchlistItem> =>
+    client.post<WatchlistItem>('/api/watchlist', { symbol }).then(r => r.data),
+  remove: (symbol: string): Promise<unknown> =>
+    client.delete(`/api/watchlist/${encodeURIComponent(symbol)}`).then(r => r.data),
 }
 
 // ─── Portfolio ─────────────────────────────────────────────────────────────────
 export const portfolioApi = {
-  getAll: (): Promise<PortfolioItem[]> => mockApi.getPortfolio(),
+  getAll: (): Promise<PortfolioItem[]> =>
+    client.get<PortfolioItem[]>('/api/portfolio').then(r => r.data),
   addOrUpdate: (data: { symbol: string; avgPrice: number; quantity: number }): Promise<PortfolioItem> =>
-    mockApi.addPortfolio(data.symbol, data.avgPrice, data.quantity),
-  remove: (symbol: string): Promise<unknown> => mockApi.removePortfolio(symbol),
+    client.post<PortfolioItem>('/api/portfolio', data).then(r => r.data),
+  remove: (symbol: string): Promise<unknown> =>
+    client.delete(`/api/portfolio/${encodeURIComponent(symbol)}`).then(r => r.data),
 }

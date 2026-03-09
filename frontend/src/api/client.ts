@@ -19,7 +19,8 @@ client.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/signin'
+      const base = import.meta.env.BASE_URL ?? '/'
+      window.location.href = base.endsWith('/') ? `${base}signin` : `${base}/signin`
     }
     return Promise.reject(err)
   }
