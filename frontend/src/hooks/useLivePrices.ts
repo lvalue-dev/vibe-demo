@@ -18,7 +18,8 @@ export function useLivePrices(_symbols: string[] = []) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    const es = new EventSource('/api/stocks/stream/sse')
+    const apiOrigin = import.meta.env.VITE_API_URL ?? ''
+    const es = new EventSource(`${apiOrigin}/api/stocks/stream/sse`)
 
     es.onmessage = (e: MessageEvent) => {
       const update: PriceUpdate = JSON.parse(e.data)

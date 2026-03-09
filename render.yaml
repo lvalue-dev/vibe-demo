@@ -11,7 +11,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: KIS_MODE
-        value: paper          # 처음엔 모의투자로 시작. 실전은 'real'로 변경
+        value: real
       - key: KIS_APP_KEY
         sync: false           # Render 대시보드에서 직접 입력
       - key: KIS_APP_SECRET

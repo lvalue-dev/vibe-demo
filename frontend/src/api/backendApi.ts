@@ -1,12 +1,14 @@
 /**
- * Spring Boot 백엔드 API 클라이언트.
- * Vite 개발 서버가 /api 요청을 localhost:8080(Spring)으로 프록시함.
+ * Node.js/KIS 백엔드 API 클라이언트.
+ * 개발: Vite 프록시가 /api → VITE_API_URL (vite.config.ts)
+ * 프로덕션: VITE_API_URL을 빌드 시 주입 (GitHub Actions secret)
  */
 import type { StockListItem, StockDetail } from '../types'
 import { buildInstitutionalDataFromChart } from './finnhubApi'
 
-// Vite proxy: /api → http://localhost:8080 (vite.config.ts 설정)
-const BASE = '/api'
+// 개발: '' (Vite proxy가 처리), 프로덕션: Render 백엔드 URL
+const API_ORIGIN = import.meta.env.VITE_API_URL ?? ''
+const BASE = `${API_ORIGIN}/api`
 
 export const isBackendEnabled = true
 

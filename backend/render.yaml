@@ -12,7 +12,7 @@ services:
       - key: PORT
         value: 3001
       - key: KIS_MODE
-        value: paper
+        value: real
       - key: KIS_APP_KEY
         sync: false          # Render 대시보드에서 직접 입력
       - key: KIS_APP_SECRET
