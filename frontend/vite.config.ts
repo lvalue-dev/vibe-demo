@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 
 export default defineConfig(({ mode }) => ({
-  base: mode === 'production' ? '/vibe-demo/' : '/',
+  base: '/',
   plugins: [react(), viteSingleFile()],
   server: {
     port: 5173,
