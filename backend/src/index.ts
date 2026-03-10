@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { stocksRouter } from './routes/stocks'
+import { chatRouter } from './routes/chat'
 import { startPoller } from './poller'
 import { startCache } from './stockCache'
 import { isKisConfigured } from './kis/auth'
@@ -31,6 +32,7 @@ app.get('/health', (_req, res) => {
 
 // ── 라우터 ────────────────────────────────────────────────────────────────────
 app.use('/api/stocks', stocksRouter)
+app.use('/api/chat', chatRouter)
 
 // ── 시작 ──────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {

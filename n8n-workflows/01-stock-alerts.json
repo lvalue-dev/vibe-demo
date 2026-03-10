@@ -1,0 +1,128 @@
+{
+  "name": "StockGuide – 강한 매수 알림",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */5 9-16 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "장중 5분마다 (평일 9-16시)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.STOCKGUIDE_API }}/api/stocks",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "fetch-stocks",
+      "name": "종목 목록 조회",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// STRONG_BUY 종목만 필터 (점수 80+)\nconst stocks = $input.all().map(i => i.json);\nconst strongBuy = stocks.filter(s => s.recommendation === 'STRONG_BUY' && s.score !== null);\n\n// 이미 알림 보낸 종목 체크 (워크플로우 Static Data 활용)\nconst sent = $getWorkflowStaticData('node');\nif (!sent.alerted) sent.alerted = {};\n\nconst now = Date.now();\nconst COOLDOWN = 4 * 60 * 60 * 1000; // 4시간 재알림 방지\n\nconst toAlert = strongBuy.filter(s => {\n  const last = sent.alerted[s.symbol];\n  return !last || (now - last) > COOLDOWN;\n});\n\n// 알림 보낼 종목 기록\ntoAlert.forEach(s => { sent.alerted[s.symbol] = now; });\n\nreturn toAlert.map(s => ({ json: s }));"
+      },
+      "id": "filter-strong-buy",
+      "name": "STRONG_BUY 필터 + 쿨다운",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.symbol }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-has-items",
+      "name": "알림 대상 있음?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🚨 *강한 매수 신호 감지*\n\n종목: *{{ $json.name }}* (`{{ $json.symbol }}`)\n시장: {{ $json.market }}\n현재가: {{ $json.currentPrice?.toLocaleString('ko-KR') }}원\n등락: {{ ($json.priceChangeRate * 100).toFixed(2) }}%\n분석 점수: {{ $json.score }}/100\n위험도: {{ $json.risk }}\n\n_StockGuide 자동 알림 | {{ new Date().toLocaleString('ko-KR', {timeZone:'Asia/Seoul'}) }}_",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-telegram",
+      "name": "Telegram 알림 전송",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 220],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-cred",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "no-op",
+      "name": "알림 없음 (종료)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "장중 5분마다 (평일 9-16시)": {
+      "main": [[{ "node": "종목 목록 조회", "type": "main", "index": 0 }]]
+    },
+    "종목 목록 조회": {
+      "main": [[{ "node": "STRONG_BUY 필터 + 쿨다운", "type": "main", "index": 0 }]]
+    },
+    "STRONG_BUY 필터 + 쿨다운": {
+      "main": [[{ "node": "알림 대상 있음?", "type": "main", "index": 0 }]]
+    },
+    "알림 대상 있음?": {
+      "main": [
+        [{ "node": "Telegram 알림 전송", "type": "main", "index": 0 }],
+        [{ "node": "알림 없음 (종료)", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "tags": ["stockguide", "alerts"],
+  "meta": {
+    "description": "장중(평일 9-16시) 5분마다 STRONG_BUY 신호를 감지해 Telegram으로 알림을 보냅니다. 4시간 쿨다운으로 중복 알림을 방지합니다."
+  }
+}

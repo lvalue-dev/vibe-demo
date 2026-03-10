@@ -1,4 +1,19 @@
+##############################################################################
+# Oracle Cloud Free Tier – A1 ARM (4 OCPU + 24 GB)
+#
+# 서비스별 예상 메모리:
+#   backend   ~150 MB
+#   frontend  ~30 MB  (nginx static)
+#   n8n       ~512 MB
+#   mcp-server ~100 MB
+#   합계       ~800 MB  (24 GB 여유 충분)
+#
+# 실행:
+#   docker compose -f docker-compose.oracle.yml up -d --build
+##############################################################################
+
 services:
+  # ── 백엔드 (Node.js + Express) ──────────────────────────────────────────────
   backend:
     build: ./backend
     expose:
@@ -14,6 +29,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ── 프론트엔드 (React + Nginx) ───────────────────────────────────────────────
   frontend:
     build: ./frontend
     ports:
@@ -21,3 +37,59 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+  # ── MCP Server (Claude가 주식 데이터 조회) ───────────────────────────────────
+  # HTTP 모드: n8n 또는 외부 Claude 클라이언트가 HTTP로 호출
+  # 포트 3002 는 Nginx / Security List 에서 외부 노출 불필요 (내부 통신만)
+  mcp-server:
+    build: ./mcp-server
+    expose:
+      - "3002"
+    environment:
+      BACKEND_URL: "http://backend:3001"
+      PORT: "3002"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ── n8n (워크플로우 자동화) ──────────────────────────────────────────────────
+  # 관리 UI: http://<VM-IP>:5678  (Oracle Security List에서 5678 포트 오픈 필요)
+  # 운영 시에는 Nginx 프록시 뒤로 숨기고 Basic Auth 사용 권장
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: "${N8N_USER:-admin}"
+      N8N_BASIC_AUTH_PASSWORD: "${N8N_PASSWORD:-changeme}"
+      N8N_HOST: "0.0.0.0"
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: "http"
+      WEBHOOK_URL: "http://localhost:5678/"
+      # 백엔드 API 주소 (워크플로우에서 사용)
+      STOCKGUIDE_API: "http://backend:3001"
+      # Telegram 봇 설정 (.env 또는 n8n UI에서 직접 입력 가능)
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      # 메모리 제한 (A1 프리티어 안전 마진)
+      NODE_OPTIONS: "--max-old-space-size=384"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - backend
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  n8n_data:
+    driver: local

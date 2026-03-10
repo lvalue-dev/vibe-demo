@@ -124,13 +124,26 @@ if [ ! -f "$ENV_FILE" ]; then
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "  KIS API 키를 입력해주세요"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  read -rp  "KIS_APP_KEY    : " KIS_APP_KEY
-  read -rsp "KIS_APP_SECRET : " KIS_APP_SECRET; echo
+  read -rp  "KIS_APP_KEY          : " KIS_APP_KEY
+  read -rsp "KIS_APP_SECRET       : " KIS_APP_SECRET; echo
+  read -rsp "ANTHROPIC_API_KEY    : (Enter 건너뜀) " ANTHROPIC_API_KEY; echo
+  read -rp  "TELEGRAM_BOT_TOKEN  : (Enter 건너뜀) " TELEGRAM_BOT_TOKEN
+  read -rp  "TELEGRAM_CHAT_ID    : (Enter 건너뜀) " TELEGRAM_CHAT_ID
+  read -rp  "N8N_PASSWORD        : (기본 changeme) " N8N_PASSWORD
+  N8N_PASSWORD="${N8N_PASSWORD:-changeme}"
   cat > "$ENV_FILE" <<EOF
 KIS_APP_KEY=$KIS_APP_KEY
 KIS_APP_SECRET=$KIS_APP_SECRET
 KIS_MODE=paper
 PORT=3001
+ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+EOF
+  # n8n 환경변수 파일 (docker-compose에서 참조)
+  cat > "$REPO_DIR/.env" <<EOF
+N8N_USER=admin
+N8N_PASSWORD=$N8N_PASSWORD
+TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
 EOF
   echo ">>> .env 저장 완료"
 else
@@ -155,6 +168,10 @@ if curl -sf "http://localhost/api/health" >/dev/null 2>&1; then
   echo "  배포 완료!"
   echo "  URL: http://$PUBLIC_IP"
   echo "  API: http://$PUBLIC_IP/api/health"
+  echo "  n8n: http://$PUBLIC_IP:5678  (Oracle Security List에서 5678 포트 오픈 필요)"
+  echo ""
+  echo "  n8n 워크플로우 가져오기:"
+  echo "    http://$PUBLIC_IP:5678 → Settings → Import → n8n-workflows/ 폴더의 JSON 파일"
   echo ""
   echo "  로그 확인: docker compose -f $REPO_DIR/docker-compose.oracle.yml logs -f"
   echo "  재시작   : docker compose -f $REPO_DIR/docker-compose.oracle.yml restart"

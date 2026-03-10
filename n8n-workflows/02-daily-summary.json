@@ -1,0 +1,83 @@
+{
+  "name": "StockGuide – 아침 일일 요약",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "daily-cron",
+      "name": "평일 오전 8시",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.STOCKGUIDE_API }}/api/stocks",
+        "options": { "timeout": 10000 }
+      },
+      "id": "fetch-all",
+      "name": "전체 종목 조회",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stocks = $input.all().map(i => i.json);\nconst analyzed = stocks.filter(s => s.score !== null);\n\nconst counts = {\n  total: stocks.length,\n  analyzed: analyzed.length,\n  STRONG_BUY: analyzed.filter(s => s.recommendation === 'STRONG_BUY').length,\n  BUY: analyzed.filter(s => s.recommendation === 'BUY').length,\n  HOLD: analyzed.filter(s => s.recommendation === 'HOLD').length,\n  SELL: analyzed.filter(s => s.recommendation === 'SELL').length,\n};\n\n// 상위 5 매수 후보 (점수 높은 순)\nconst top5 = [...analyzed]\n  .sort((a, b) => b.score - a.score)\n  .slice(0, 5)\n  .map(s => `  • *${s.name}* (${s.symbol}) — 점수 ${s.score}, ${(s.priceChangeRate*100).toFixed(1)}%`);\n\n// 매도 주의 종목\nconst sell3 = analyzed\n  .filter(s => s.recommendation === 'SELL')\n  .sort((a, b) => a.score - b.score)\n  .slice(0, 3)\n  .map(s => `  • ${s.name} (${s.symbol}) — 점수 ${s.score}`);\n\nconst today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long' });\n\nconst message = [\n  `📊 *StockGuide 오늘의 시장 요약*`,\n  `_${today}_`,\n  ``,\n  `📈 추천 현황`,\n  `  강한매수 ${counts.STRONG_BUY}개 | 매수 ${counts.BUY}개 | 관망 ${counts.HOLD}개 | 매도 ${counts.SELL}개`,\n  ``,\n  `🔥 오늘의 매수 후보 TOP 5`,\n  ...top5,\n  ``,\n  ...(sell3.length > 0 ? [\n    `⚠️ 매도 주의`,\n    ...sell3,\n    ``,\n  ] : []),\n  `_분석 기준 시각: ${new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' })}_`,\n].join('\\n');\n\nreturn [{ json: { message } }];"
+      },
+      "id": "build-summary",
+      "name": "요약 메시지 생성",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-daily",
+      "name": "Telegram 일일 요약 전송",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-cred",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "평일 오전 8시": {
+      "main": [[{ "node": "전체 종목 조회", "type": "main", "index": 0 }]]
+    },
+    "전체 종목 조회": {
+      "main": [[{ "node": "요약 메시지 생성", "type": "main", "index": 0 }]]
+    },
+    "요약 메시지 생성": {
+      "main": [[{ "node": "Telegram 일일 요약 전송", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": ["stockguide", "daily"],
+  "meta": {
+    "description": "평일 오전 8시에 전체 시장 요약과 TOP 5 매수 후보를 Telegram으로 전송합니다."
+  }
+}

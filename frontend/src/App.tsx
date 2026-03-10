@@ -9,6 +9,7 @@ import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
 import InstitutionalTrend from './pages/InstitutionalTrend'
 import { useAuthStore } from './store/authStore'
+import StockChat from './components/ai/StockChat'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +48,7 @@ export default function App() {
               />
             </Routes>
           </main>
+          <StockChat />
         </div>
       </BrowserRouter>
     </QueryClientProvider>
