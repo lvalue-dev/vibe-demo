@@ -126,7 +126,7 @@ if [ ! -f "$ENV_FILE" ]; then
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   read -rp  "KIS_APP_KEY          : " KIS_APP_KEY
   read -rsp "KIS_APP_SECRET       : " KIS_APP_SECRET; echo
-  read -rsp "ANTHROPIC_API_KEY    : (Enter 건너뜀) " ANTHROPIC_API_KEY; echo
+  read -rp  "GEMINI_API_KEY       : (aistudio.google.com 무료발급, Enter 건너뜀) " GEMINI_API_KEY
   read -rp  "TELEGRAM_BOT_TOKEN  : (Enter 건너뜀) " TELEGRAM_BOT_TOKEN
   read -rp  "TELEGRAM_CHAT_ID    : (Enter 건너뜀) " TELEGRAM_CHAT_ID
   read -rp  "N8N_PASSWORD        : (기본 changeme) " N8N_PASSWORD
@@ -136,7 +136,7 @@ KIS_APP_KEY=$KIS_APP_KEY
 KIS_APP_SECRET=$KIS_APP_SECRET
 KIS_MODE=paper
 PORT=3001
-ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+GEMINI_API_KEY=$GEMINI_API_KEY
 EOF
   # n8n 환경변수 파일 (docker-compose에서 참조)
   cat > "$REPO_DIR/.env" <<EOF
