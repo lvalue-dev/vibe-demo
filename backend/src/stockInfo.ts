@@ -179,7 +179,6 @@ export const STOCK_INFO: Record<string, { name: string; market: string; sector: 
   '131970.KQ': { name: '두산테스나',      market: 'KOSDAQ', sector: '반도체' },
   // 2차전지
   '278280.KQ': { name: '천보',            market: 'KOSDAQ', sector: '2차전지소재' },
-  '066970.KQ': { name: '엘앤에프',        market: 'KOSDAQ', sector: '2차전지소재' },
   '222080.KQ': { name: '씨아이에스',      market: 'KOSDAQ', sector: '2차전지장비' },
   '459190.KQ': { name: '에코앤드림',      market: 'KOSDAQ', sector: '2차전지소재' },
   '107640.KQ': { name: '한중엔시에스',    market: 'KOSDAQ', sector: '2차전지장비' },
