@@ -135,7 +135,7 @@ export const watchlistApi = USE_BACKEND ? {
 } : {
   getAll: async (): Promise<WatchlistItem[]> => {
     if (_wl.length === 0) return []
-    const stocks = getStocksFromYahoo()
+    const stocks = await getStocksFromYahoo()
     return _wl.flatMap((sym, i) => {
       const s = stocks.find(x => x.symbol === sym)
       return s ? [{ id: i + 1, ...s, addedAt: new Date().toISOString() } as WatchlistItem] : []
@@ -143,7 +143,7 @@ export const watchlistApi = USE_BACKEND ? {
   },
   add: async (symbol: string): Promise<WatchlistItem> => {
     if (_wl.includes(symbol)) throw new Error('이미 추가된 종목입니다')
-    const stocks = getStocksFromYahoo()
+    const stocks = await getStocksFromYahoo()
     const s = stocks.find(x => x.symbol === symbol)
     if (!s) throw new Error('지원하지 않는 종목입니다')
     _wl.push(symbol)
@@ -169,7 +169,7 @@ export const portfolioApi = USE_BACKEND ? {
 } : {
   getAll: async (): Promise<PortfolioItem[]> => {
     if (_pf.length === 0) return []
-    const stocks = getStocksFromYahoo()
+    const stocks = await getStocksFromYahoo()
     return _pf.flatMap((p, i): PortfolioItem[] => {
       const s = stocks.find(x => x.symbol === p.symbol)
       if (!s) return []
@@ -182,7 +182,7 @@ export const portfolioApi = USE_BACKEND ? {
     })
   },
   addOrUpdate: async (data: { symbol: string; avgPrice: number; quantity: number }): Promise<PortfolioItem> => {
-    const stocks = getStocksFromYahoo()
+    const stocks = await getStocksFromYahoo()
     const s = stocks.find(x => x.symbol === data.symbol)
     if (!s) throw new Error('지원하지 않는 종목입니다')
     const idx = _pf.findIndex(p => p.symbol === data.symbol)
