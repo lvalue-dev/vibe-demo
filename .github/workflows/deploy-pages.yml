@@ -38,6 +38,8 @@ jobs:
         env:
           # Render 백엔드 URL — GitHub 리포지토리 Settings > Secrets > VITE_API_URL 에 입력
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          # GitHub Pages 경로: /<repo-name>/
+          VITE_BASE_URL: /vibe-demo/
 
       - name: Copy build output to docs/
         run: |
