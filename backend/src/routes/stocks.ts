@@ -38,7 +38,8 @@ stocksRouter.get('/:symbol', async (req: Request, res: Response) => {
     let price: number, prevClose: number, changeRate: number, volume: number
     let candles: { date: string; open: number; close: number; volume: number }[]
 
-    if (isKisConfigured()) {
+    // STOCK_SOURCE=yahoo 이면 KIS 설정 여부와 무관하게 Yahoo 사용 (개발계)
+    if (process.env.STOCK_SOURCE !== 'yahoo' && isKisConfigured()) {
       const [q, c] = await Promise.all([
         kisInfo.type === 'domestic'
           ? getDomesticPrice(kisInfo.code)

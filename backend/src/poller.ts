@@ -33,7 +33,7 @@ async function pollOne(sym: string): Promise<void> {
   try {
     let price: number, prevClose: number, changeRate: number, volume: number
 
-    if (isKisConfigured()) {
+    if (process.env.STOCK_SOURCE !== 'yahoo' && isKisConfigured()) {
       const q = kisInfo.type === 'domestic'
         ? await getDomesticPrice(kisInfo.code)
         : await getOverseasPrice(kisInfo.exchange!, kisInfo.code)

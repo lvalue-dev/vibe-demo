@@ -1,6 +1,19 @@
+##############################################################################
+# Render 배포 – 개발계 Node.js 백엔드 (Yahoo Finance)
+#
+# 용도: GitHub Pages 프론트엔드의 개발/테스트용 백엔드
+# 데이터: Yahoo Finance (무료, 인증 불필요)
+# KIS 설정 불필요 – STOCK_SOURCE=yahoo 로 강제 Yahoo 모드
+#
+# 배포:
+#   1. Render 계정 → New Blueprint → 이 repo 선택
+#   2. 배포 완료 후 서비스 URL (*.onrender.com) 복사
+#   3. GitHub repo Settings > Secrets > VITE_API_URL 에 해당 URL 입력
+##############################################################################
+
 services:
   - type: web
-    name: vibe-demo-backend
+    name: stockguide-dev-yahoo
     env: node
     region: singapore   # 한국과 가장 가까운 리전
     plan: free
@@ -10,11 +23,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: STOCK_SOURCE
+        value: yahoo           # Yahoo Finance 강제 (KIS 불필요)
       - key: KIS_MODE
-        value: real
-      - key: KIS_APP_KEY
-        sync: false           # Render 대시보드에서 직접 입력
-      - key: KIS_APP_SECRET
-        sync: false           # Render 대시보드에서 직접 입력
+        value: paper           # 혹시 KIS 추후 연동 시 안전 모드
       - key: FRONTEND_URL
-        value: https://lvalue-dev.github.io  # 실제 배포 URL로 변경
+        value: https://lvalue-dev.github.io  # GitHub Pages CORS 허용
