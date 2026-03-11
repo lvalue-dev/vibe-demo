@@ -31,6 +31,8 @@ export interface YfQuote {
 export interface YfCandle {
   date: string
   open: number
+  high: number
+  low: number
   close: number
   volume: number
 }
@@ -53,9 +55,12 @@ export async function yfCandles(symbol: string, days = 30): Promise<YfCandle[]> 
   const r = await yfFetch(symbol, `${days + 10}d`, '1d')
   if (!r?.timestamp) return []
 
-  const closes: (number | null)[] = r.indicators?.quote?.[0]?.close ?? []
-  const opens:  (number | null)[] = r.indicators?.quote?.[0]?.open  ?? []
-  const vols:   (number | null)[] = r.indicators?.quote?.[0]?.volume ?? []
+  const q0     = r.indicators?.quote?.[0] ?? {}
+  const closes: (number | null)[] = q0.close  ?? []
+  const opens:  (number | null)[] = q0.open   ?? []
+  const highs:  (number | null)[] = q0.high   ?? []
+  const lows:   (number | null)[] = q0.low    ?? []
+  const vols:   (number | null)[] = q0.volume ?? []
 
   const result: YfCandle[] = []
   ;(r.timestamp as number[]).forEach((ts, i) => {
@@ -65,8 +70,10 @@ export async function yfCandles(symbol: string, days = 30): Promise<YfCandle[]> 
     result.push({
       date:   `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`,
       open:   opens[i] ?? c,
+      high:   highs[i] ?? c,
+      low:    lows[i]  ?? c,
       close:  c,
-      volume: vols[i] ?? 0,
+      volume: vols[i]  ?? 0,
     })
   })
   return result.slice(-days)

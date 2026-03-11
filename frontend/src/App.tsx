@@ -8,6 +8,7 @@ import Portfolio from './pages/Portfolio'
 import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
 import InstitutionalTrend from './pages/InstitutionalTrend'
+import MarketInsights from './pages/MarketInsights'
 import { useAuthStore } from './store/authStore'
 import StockChat from './components/ai/StockChat'
 
@@ -36,6 +37,7 @@ export default function App() {
               <Route path="/" element={<Home />} />
               <Route path="/stocks/:symbol" element={<StockDetail />} />
               <Route path="/institutional" element={<InstitutionalTrend />} />
+              <Route path="/insights" element={<MarketInsights />} />
               <Route path="/signin" element={<SignIn />} />
               <Route path="/signup" element={<SignUp />} />
               <Route

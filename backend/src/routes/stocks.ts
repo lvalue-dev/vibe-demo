@@ -36,7 +36,7 @@ stocksRouter.get('/:symbol', async (req: Request, res: Response) => {
 
   try {
     let price: number, prevClose: number, changeRate: number, volume: number
-    let candles: { date: string; open: number; close: number; volume: number }[]
+    let candles: { date: string; open: number; high: number; low: number; close: number; volume: number }[]
 
     // STOCK_SOURCE=yahoo 이면 KIS 설정 여부와 무관하게 Yahoo 사용 (개발계)
     if (process.env.STOCK_SOURCE !== 'yahoo' && isKisConfigured()) {
@@ -66,7 +66,7 @@ stocksRouter.get('/:symbol', async (req: Request, res: Response) => {
       symbol: sym, name: info.name, market: info.market, sector: info.sector,
       currentPrice: price, prevClose, priceChangeRate: changeRate, volume,
       ...result,
-      chartData: candles.map(c => ({ time: c.date.slice(4,6)+'/'+c.date.slice(6), price: c.close, volume: c.volume })),
+      chartData: candles.map(c => ({ time: c.date.slice(4,6)+'/'+c.date.slice(6), open: c.open, high: c.high, low: c.low, price: c.close, volume: c.volume })),
       volumeHistory: candles.map((c, i) => ({
         date: c.date.slice(4,6)+'/'+c.date.slice(6),
         volume: c.volume,

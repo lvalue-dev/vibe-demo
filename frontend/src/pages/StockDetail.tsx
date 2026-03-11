@@ -11,14 +11,16 @@ import RiskBadge from '../components/common/RiskBadge'
 import ScoreBar from '../components/common/ScoreBar'
 import { useAuthStore } from '../store/authStore'
 import { formatChange, formatPriceWithCurrency, formatVolume, RECOMMENDATION_COLORS } from '../utils/format'
+import QuantTab from '../components/quant/QuantTab'
 
-type Tab = 'price' | 'volume' | 'investor'
+type Tab = 'price' | 'volume' | 'investor' | 'quant'
 type Period = 'daily' | 'weekly' | 'intraday'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'price',    label: '가격 차트' },
   { key: 'volume',   label: '거래량 분석' },
   { key: 'investor', label: '투자자 동향' },
+  { key: 'quant',    label: '퀀트 예측' },
 ]
 
 const PERIODS: { key: Period; label: string }[] = [
@@ -251,6 +253,15 @@ export default function StockDetail() {
               avgVolume20={stock.avgVolume20}
             />
           </div>
+        )}
+
+        {/* 퀀트 예측 탭 */}
+        {tab === 'quant' && (
+          <QuantTab
+            chartData={stock.chartData}
+            currentPrice={stock.currentPrice}
+            market={stock.market}
+          />
         )}
 
         {/* 투자자 동향 탭 */}

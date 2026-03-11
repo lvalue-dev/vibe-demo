@@ -18,6 +18,9 @@ export interface StockListItem {
 
 export interface PricePoint {
   time: string
+  open?: number
+  high?: number
+  low?: number
   price: number
   ma5?: number
   ma20?: number
@@ -157,6 +160,30 @@ export interface PortfolioItem {
   score: number | null
   risk: RiskLevel | null
   riskLabel: string
+}
+
+// ── 뉴스 관련 타입 ─────────────────────────────────────────────────────────────
+
+export interface SectorImpact {
+  name: string
+  impact: 'positive' | 'negative' | 'neutral'
+  reason: string
+}
+
+export interface NewsArticle {
+  id: string
+  title: string
+  summary: string
+  source: string
+  url: string
+  publishedAt: string           // ISO 8601
+  category: 'global' | 'korean'
+  thumbnailUrl?: string
+  sectorAnalysis?: {
+    sectors: SectorImpact[]
+    relatedSymbols: string[]    // 영향 종목 심볼
+    aiSummary: string
+  }
 }
 
 export interface AuthResponse {

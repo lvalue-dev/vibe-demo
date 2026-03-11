@@ -24,6 +24,12 @@ export default function Navbar() {
       >
         기관동향
       </Link>
+      <Link
+        to="/insights"
+        className="text-sm text-gray-600 hover:text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+      >
+        마켓인사이트
+      </Link>
       {isAuthenticated && (
         <>
           <Link

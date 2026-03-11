@@ -66,7 +66,7 @@ async function getDetailFromYahoo(symbol: string): Promise<StockDetail> {
   const volumes = candles.map(c => c.volume)
   const result  = analyze(closes, volumes, quote.price, quote.changeRate)
 
-  const chartData     = candles.map(c => ({ time: c.time, price: c.price, volume: c.volume }))
+  const chartData     = candles.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, price: c.price, volume: c.volume }))
   const volumeHistory = candles.map((c, i) => ({
     date: c.time, volume: c.volume,
     isUp: i === 0 || c.price >= candles[i - 1].price,
