@@ -25,7 +25,7 @@ const SUGGESTED = [
 const API_BASE     = import.meta.env.VITE_API_URL || ''
 const USE_BACKEND  = !!import.meta.env.VITE_API_URL
 const GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY || ''
-const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GEMINI_KEY}`
+const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${GEMINI_KEY}`
 const SYSTEM_PROMPT =
   '당신은 StockGuide 주식 투자 AI 어시스턴트입니다. 한국 주식 초보자에게 쉽게 설명하세요. ' +
   '규칙: 한국어로 250자 이내, 수치와 이유 포함, 투자 손실 위험 언급.'
