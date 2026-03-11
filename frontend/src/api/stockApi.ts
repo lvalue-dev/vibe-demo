@@ -6,7 +6,7 @@
  */
 import { fetchStocksFromBackend, fetchDetailFromBackend } from './backendApi'
 import { STOCK_INFO, buildInstitutionalDataFromChart } from './finnhubApi'
-import { seedPrice, yfChart } from './yahooApi'
+import { seedPrice, yfChart, fetchAllPrices } from './yahooApi'
 import { analyze } from '../utils/analyze'
 import client from './client'
 import type {
@@ -26,17 +26,20 @@ function symbolSeed(sym: string): number {
   return sym.split('').reduce((a, c, i) => a + c.charCodeAt(0) * (i + 3), 0)
 }
 
-// ── 개발계: 종목 목록 (기준가 + 시드 일별 변동) ────────────────────────────────
-// Yahoo v7/quote는 브라우저에서 인증 차단 → seedPrice() 사용
-// 종목 상세(yfChart)는 Yahoo v8/chart를 직접 호출해 실제 데이터 제공
-function getStocksFromYahoo(): StockListItem[] {
+// ── 개발계: 종목 목록 (Yahoo 실제 현재가, 캐시 5분 TTL) ─────────────────────────
+// Yahoo v7/quote는 브라우저에서 인증 차단 → v8/chart 현재가 활용
+// fetchAllPrices: 동시 3개 + 200ms 배치 딜레이로 과호출 방지, 실패 시 seedPrice fallback
+async function getStocksFromYahoo(): Promise<StockListItem[]> {
   const symbols   = Object.keys(STOCK_INFO)
   const dailySeed = Math.floor(Date.now() / 86400000)
+
+  const realPrices = await fetchAllPrices(symbols).catch(() => new Map())
 
   return symbols.map(sym => {
     const info = STOCK_INFO[sym]
     const seed = symbolSeed(sym)
-    const q    = seedPrice(sym, dailySeed)
+    const real = realPrices.get(sym)
+    const q    = real ?? seedPrice(sym, dailySeed)  // 실패 시 시드 fallback
 
     const score              = 20 + Math.floor(seededRand(seed * 3 + dailySeed * 997) * 80)
     const recommendation     = score >= 80 ? 'STRONG_BUY' : score >= 60 ? 'BUY' : score >= 40 ? 'HOLD' : 'SELL'
@@ -81,7 +84,7 @@ async function getDetailFromYahoo(symbol: string): Promise<StockDetail> {
 
 // ─── Stocks ────────────────────────────────────────────────────────────────────
 async function getStocks(): Promise<StockListItem[]> {
-  return USE_BACKEND ? fetchStocksFromBackend() : Promise.resolve(getStocksFromYahoo())
+  return USE_BACKEND ? fetchStocksFromBackend() : getStocksFromYahoo()
 }
 async function getDetail(symbol: string, period = 'daily'): Promise<StockDetail> {
   return USE_BACKEND ? fetchDetailFromBackend(symbol, period) : getDetailFromYahoo(symbol)

@@ -111,9 +111,61 @@ export interface YfCandle {
   volume: number
 }
 
+// ── 현재가 캐시 (홈 화면 실제 가격 공유용) ────────────────────────────────────
+const CACHE_TTL = 5 * 60 * 1000  // 5분
+const priceCache = new Map<string, { data: YfQuote; fetchedAt: number }>()
+
+function parseMeta(data: unknown, symbol: string): YfQuote {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meta = (data as any)?.chart?.result?.[0]?.meta ?? {}
+  const price     = meta.regularMarketPrice ?? 0
+  const prevClose = meta.previousClose ?? meta.chartPreviousClose ?? price
+  return {
+    symbol,
+    price,
+    prevClose,
+    changeRate: prevClose > 0 ? (price - prevClose) / prevClose : 0,
+    volume: meta.regularMarketVolume ?? 0,
+  }
+}
+
+/** 단일 종목 현재가 (캐시 우선, 2d 짧은 range로 빠르게) */
+async function fetchPriceWithCache(symbol: string): Promise<YfQuote> {
+  const cached = priceCache.get(symbol)
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) return cached.data
+
+  const data  = await yfGet(`/v8/finance/chart/${encodeURIComponent(symbol)}?range=2d&interval=1d`)
+  const quote = parseMeta(data, symbol)
+  priceCache.set(symbol, { data: quote, fetchedAt: Date.now() })
+  return quote
+}
+
+/**
+ * 전 종목 현재가 일괄 fetch (홈 화면용)
+ * - 동시 최대 3개 요청 + 배치 간 200ms 딜레이로 Yahoo 과호출 방지
+ * - 캐시 TTL 5분: React Query 30s refetch와 무관하게 Yahoo 호출은 5분에 1회
+ */
+export async function fetchAllPrices(symbols: string[]): Promise<Map<string, YfQuote>> {
+  const result      = new Map<string, YfQuote>()
+  const CONCURRENCY = 3
+
+  for (let i = 0; i < symbols.length; i += CONCURRENCY) {
+    const batch   = symbols.slice(i, i + CONCURRENCY)
+    const settled = await Promise.allSettled(batch.map(sym => fetchPriceWithCache(sym)))
+    settled.forEach((r, idx) => {
+      if (r.status === 'fulfilled') result.set(batch[idx], r.value)
+    })
+    if (i + CONCURRENCY < symbols.length) {
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+  }
+  return result
+}
+
 /**
  * 단일 종목 차트 + 현재가 (상세 화면용)
  * v8/finance/chart 는 OHLCV 캔들 데이터를 제공
+ * fetch 후 priceCache 갱신 → 홈 화면 캐시 공유
  */
 export async function yfChart(
   symbol: string,
@@ -125,16 +177,8 @@ export async function yfChart(
   const r = data?.chart?.result?.[0]
   if (!r) throw new Error(`Yahoo Finance: no data for ${symbol}`)
 
-  const meta = r.meta ?? {}
-  const price     = meta.regularMarketPrice ?? 0
-  const prevClose = meta.previousClose ?? meta.chartPreviousClose ?? price
-  const quote: YfQuote = {
-    symbol,
-    price,
-    prevClose,
-    changeRate: prevClose > 0 ? (price - prevClose) / prevClose : 0,
-    volume: meta.regularMarketVolume ?? 0,
-  }
+  const quote = parseMeta(data, symbol)
+  priceCache.set(symbol, { data: quote, fetchedAt: Date.now() })  // 홈 화면 캐시 공유
 
   const closes: (number | null)[] = r.indicators?.quote?.[0]?.close ?? []
   const vols:   (number | null)[] = r.indicators?.quote?.[0]?.volume ?? []
