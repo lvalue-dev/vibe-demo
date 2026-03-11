@@ -30,9 +30,9 @@ export default function Home() {
   const { data: stocks = [], isLoading, isError, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['stocks'],
     queryFn: stockApi.getAll,
-    staleTime: 30 * 1000,
-    // 백엔드 SSE가 있으면 polling 주기를 늘림 (SSE가 실시간 갱신 담당)
-    refetchInterval: isBackendEnabled ? 60 * 1000 : 30 * 1000,
+    staleTime: 0,
+    // 백그라운드 fetch가 끝나면 캐시 읽어 즉시 반영 (캐시 있으면 Yahoo 재호출 없음)
+    refetchInterval: isBackendEnabled ? 60 * 1000 : 5 * 1000,
     retry: 1,
   })
 
