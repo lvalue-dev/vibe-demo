@@ -1,13 +1,13 @@
 import type { WatchlistItem, PortfolioItem, AuthResponse } from '../types'
-import { fetchStocksFromBackend } from './backendApi'
+import { stockApi } from './stockApi'
 
 // In-memory state (초기 빈 상태 — 더미 데이터 없음)
 const watchlistSymbols: string[] = []
 const portfolioItems: Array<{ symbol: string; avgPrice: number; quantity: number }> = []
 
-// Spring 백엔드에서 현재가 조회
+// dev: Yahoo Finance, prod: Java 백엔드 (stockApi 내부에서 분기)
 async function getStockData() {
-  return fetchStocksFromBackend()
+  return stockApi.getAll()
 }
 
 export const mockApi = {
