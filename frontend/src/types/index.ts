@@ -181,7 +181,7 @@ export interface NewsArticle {
   thumbnailUrl?: string
   sectorAnalysis?: {
     sectors: SectorImpact[]
-    relatedSymbols: string[]    // 영향 종목 심볼
+    relatedStocks: { symbol: string; impact: 'positive' | 'negative' | 'neutral' }[]
     aiSummary: string
   }
 }

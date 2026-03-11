@@ -169,11 +169,18 @@ ${articleList}
 [
   {
     "index": 1,
-    "sectors": [{"name": "반도체", "impact": "positive", "reason": "AI 칩 수요 증가"}],
-    "relatedSymbols": ["NVDA", "000660.KS"],
+    "sectors": [{"name": "반도체", "impact": "positive", "reason": "AI 칩 수요 증가로 반도체 수요 확대 예상"}],
+    "relatedStocks": [
+      {"symbol": "NVDA", "impact": "positive"},
+      {"symbol": "000660.KS", "impact": "positive"},
+      {"symbol": "INTC", "impact": "negative"}
+    ],
     "aiSummary": "30자 이내 핵심 요약"
   }
-]`
+]
+
+relatedStocks의 symbol은 반드시 실제 주식 티커(예: AAPL, 005930.KS, NVDA)를 사용하세요.
+impact는 해당 종목이 이 뉴스로 인해 긍정적("positive"), 부정적("negative"), 중립적("neutral") 영향을 받을지 판단하세요.`
 
       try {
         const res = await fetch(GEMINI_URL, {
@@ -205,9 +212,9 @@ ${articleList}
           analyzed[idx] = {
             ...analyzed[idx],
             sectorAnalysis: {
-              sectors:        (item.sectors ?? []) as SectorImpact[],
-              relatedSymbols: item.relatedSymbols ?? [],
-              aiSummary:      item.aiSummary ?? '',
+              sectors:       (item.sectors ?? []) as SectorImpact[],
+              relatedStocks: item.relatedStocks ?? [],
+              aiSummary:     item.aiSummary ?? '',
             },
           }
         })
