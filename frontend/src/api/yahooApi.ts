@@ -114,6 +114,7 @@ export interface YfCandle {
 // ── 현재가 캐시 (홈 화면 실제 가격 공유용) ────────────────────────────────────
 const CACHE_TTL = 5 * 60 * 1000  // 5분
 const priceCache = new Map<string, { data: YfQuote; fetchedAt: number }>()
+let _backgroundFetching = false
 
 function parseMeta(data: unknown, symbol: string): YfQuote {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,10 +142,36 @@ async function fetchPriceWithCache(symbol: string): Promise<YfQuote> {
 }
 
 /**
- * 전 종목 현재가 일괄 fetch (홈 화면용)
- * - 동시 최대 3개 요청 + 배치 간 200ms 딜레이로 Yahoo 과호출 방지
- * - 캐시 TTL 5분: React Query 30s refetch와 무관하게 Yahoo 호출은 5분에 1회
+ * 캐시에 저장된 현재가 동기 반환 (없으면 undefined)
+ * 홈 화면에서 블로킹 없이 캐시된 가격만 즉시 사용할 때 활용
  */
+export function getCachedPrice(symbol: string): YfQuote | undefined {
+  const cached = priceCache.get(symbol)
+  return cached && Date.now() - cached.fetchedAt < CACHE_TTL ? cached.data : undefined
+}
+
+/**
+ * 전 종목 현재가를 백그라운드에서 fetch해 캐시에 저장
+ * - 동시 최대 3개 요청 + 배치 간 300ms 딜레이로 Yahoo 과호출 방지
+ * - 이미 실행 중이면 중복 실행하지 않음
+ */
+export function prefetchAllPrices(symbols: string[]): void {
+  if (_backgroundFetching) return
+  _backgroundFetching = true
+
+  const CONCURRENCY = 3
+  ;(async () => {
+    for (let i = 0; i < symbols.length; i += CONCURRENCY) {
+      const batch = symbols.slice(i, i + CONCURRENCY)
+      await Promise.allSettled(batch.map(sym => fetchPriceWithCache(sym)))
+      if (i + CONCURRENCY < symbols.length) {
+        await new Promise(resolve => setTimeout(resolve, 300))
+      }
+    }
+  })().finally(() => { _backgroundFetching = false })
+}
+
+/** @deprecated 직접 await이 필요한 경우에만 사용 */
 export async function fetchAllPrices(symbols: string[]): Promise<Map<string, YfQuote>> {
   const result      = new Map<string, YfQuote>()
   const CONCURRENCY = 3
@@ -156,7 +183,7 @@ export async function fetchAllPrices(symbols: string[]): Promise<Map<string, YfQ
       if (r.status === 'fulfilled') result.set(batch[idx], r.value)
     })
     if (i + CONCURRENCY < symbols.length) {
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await new Promise(resolve => setTimeout(resolve, 300))
     }
   }
   return result

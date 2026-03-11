@@ -6,7 +6,7 @@
  */
 import { fetchStocksFromBackend, fetchDetailFromBackend } from './backendApi'
 import { STOCK_INFO, buildInstitutionalDataFromChart } from './finnhubApi'
-import { seedPrice, yfChart, fetchAllPrices } from './yahooApi'
+import { seedPrice, yfChart, getCachedPrice, prefetchAllPrices } from './yahooApi'
 import { analyze } from '../utils/analyze'
 import client from './client'
 import type {
@@ -26,20 +26,20 @@ function symbolSeed(sym: string): number {
   return sym.split('').reduce((a, c, i) => a + c.charCodeAt(0) * (i + 3), 0)
 }
 
-// ── 개발계: 종목 목록 (Yahoo 실제 현재가, 캐시 5분 TTL) ─────────────────────────
-// Yahoo v7/quote는 브라우저에서 인증 차단 → v8/chart 현재가 활용
-// fetchAllPrices: 동시 3개 + 200ms 배치 딜레이로 과호출 방지, 실패 시 seedPrice fallback
-async function getStocksFromYahoo(): Promise<StockListItem[]> {
+// ── 개발계: 종목 목록 (즉시 반환 + 백그라운드 실제 가격 fetch) ──────────────────
+// 1) 캐시된 실제 가격이 있으면 즉시 사용, 없으면 seedPrice로 즉시 표시
+// 2) 동시에 백그라운드에서 Yahoo fetch 시작 → 30s 후 React Query 리페치 때 반영
+function getStocksFromYahoo(): StockListItem[] {
   const symbols   = Object.keys(STOCK_INFO)
   const dailySeed = Math.floor(Date.now() / 86400000)
 
-  const realPrices = await fetchAllPrices(symbols).catch(() => new Map())
+  prefetchAllPrices(symbols)  // 백그라운드 fetch 시작 (블로킹 없음)
 
   return symbols.map(sym => {
     const info = STOCK_INFO[sym]
     const seed = symbolSeed(sym)
-    const real = realPrices.get(sym)
-    const q    = real ?? seedPrice(sym, dailySeed)  // 실패 시 시드 fallback
+    const real = getCachedPrice(sym)               // 캐시된 실제 가격 (없으면 undefined)
+    const q    = real ?? seedPrice(sym, dailySeed) // 없으면 시드 fallback
 
     const score              = 20 + Math.floor(seededRand(seed * 3 + dailySeed * 997) * 80)
     const recommendation     = score >= 80 ? 'STRONG_BUY' : score >= 60 ? 'BUY' : score >= 40 ? 'HOLD' : 'SELL'
@@ -84,7 +84,7 @@ async function getDetailFromYahoo(symbol: string): Promise<StockDetail> {
 
 // ─── Stocks ────────────────────────────────────────────────────────────────────
 async function getStocks(): Promise<StockListItem[]> {
-  return USE_BACKEND ? fetchStocksFromBackend() : getStocksFromYahoo()
+  return USE_BACKEND ? fetchStocksFromBackend() : Promise.resolve(getStocksFromYahoo())
 }
 async function getDetail(symbol: string, period = 'daily'): Promise<StockDetail> {
   return USE_BACKEND ? fetchDetailFromBackend(symbol, period) : getDetailFromYahoo(symbol)
@@ -135,7 +135,7 @@ export const watchlistApi = USE_BACKEND ? {
 } : {
   getAll: async (): Promise<WatchlistItem[]> => {
     if (_wl.length === 0) return []
-    const stocks = await getStocksFromYahoo()
+    const stocks = getStocksFromYahoo()
     return _wl.flatMap((sym, i) => {
       const s = stocks.find(x => x.symbol === sym)
       return s ? [{ id: i + 1, ...s, addedAt: new Date().toISOString() } as WatchlistItem] : []
@@ -143,7 +143,7 @@ export const watchlistApi = USE_BACKEND ? {
   },
   add: async (symbol: string): Promise<WatchlistItem> => {
     if (_wl.includes(symbol)) throw new Error('이미 추가된 종목입니다')
-    const stocks = await getStocksFromYahoo()
+    const stocks = getStocksFromYahoo()
     const s = stocks.find(x => x.symbol === symbol)
     if (!s) throw new Error('지원하지 않는 종목입니다')
     _wl.push(symbol)
@@ -169,7 +169,7 @@ export const portfolioApi = USE_BACKEND ? {
 } : {
   getAll: async (): Promise<PortfolioItem[]> => {
     if (_pf.length === 0) return []
-    const stocks = await getStocksFromYahoo()
+    const stocks = getStocksFromYahoo()
     return _pf.flatMap((p, i): PortfolioItem[] => {
       const s = stocks.find(x => x.symbol === p.symbol)
       if (!s) return []
@@ -182,7 +182,7 @@ export const portfolioApi = USE_BACKEND ? {
     })
   },
   addOrUpdate: async (data: { symbol: string; avgPrice: number; quantity: number }): Promise<PortfolioItem> => {
-    const stocks = await getStocksFromYahoo()
+    const stocks = getStocksFromYahoo()
     const s = stocks.find(x => x.symbol === data.symbol)
     if (!s) throw new Error('지원하지 않는 종목입니다')
     const idx = _pf.findIndex(p => p.symbol === data.symbol)
