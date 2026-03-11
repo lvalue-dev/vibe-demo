@@ -6,7 +6,7 @@
  */
 import { fetchStocksFromBackend, fetchDetailFromBackend } from './backendApi'
 import { STOCK_INFO, buildInstitutionalDataFromChart } from './finnhubApi'
-import { yfBatchQuotes, yfChart } from './yahooApi'
+import { seedPrice, yfChart } from './yahooApi'
 import { analyze } from '../utils/analyze'
 import client from './client'
 import type {
@@ -26,16 +26,17 @@ function symbolSeed(sym: string): number {
   return sym.split('').reduce((a, c, i) => a + c.charCodeAt(0) * (i + 3), 0)
 }
 
-// ── 개발계: Yahoo 종목 목록 ────────────────────────────────────────────────────
-async function getStocksFromYahoo(): Promise<StockListItem[]> {
+// ── 개발계: 종목 목록 (기준가 + 시드 일별 변동) ────────────────────────────────
+// Yahoo v7/quote는 브라우저에서 인증 차단 → seedPrice() 사용
+// 종목 상세(yfChart)는 Yahoo v8/chart를 직접 호출해 실제 데이터 제공
+function getStocksFromYahoo(): StockListItem[] {
   const symbols   = Object.keys(STOCK_INFO)
   const dailySeed = Math.floor(Date.now() / 86400000)
-  const priceMap  = await yfBatchQuotes(symbols).catch(() => new Map())
 
   return symbols.map(sym => {
     const info = STOCK_INFO[sym]
-    const q    = priceMap.get(sym)
     const seed = symbolSeed(sym)
+    const q    = seedPrice(sym, dailySeed)
 
     const score              = 20 + Math.floor(seededRand(seed * 3 + dailySeed * 997) * 80)
     const recommendation     = score >= 80 ? 'STRONG_BUY' : score >= 60 ? 'BUY' : score >= 40 ? 'HOLD' : 'SELL'
@@ -45,9 +46,7 @@ async function getStocksFromYahoo(): Promise<StockListItem[]> {
 
     return {
       symbol: sym, name: info.name, market: info.market,
-      currentPrice:    q?.price      ?? 0,
-      priceChangeRate: q?.changeRate ?? (seededRand(seed + dailySeed) - 0.5) * 0.06,
-      volume:          q?.volume     ?? 0,
+      currentPrice: q.price, priceChangeRate: q.changeRate, volume: q.volume,
       score, recommendation, recommendationLabel, risk, riskLabel,
       analyzedAt: new Date().toISOString(),
     } as StockListItem
@@ -82,7 +81,7 @@ async function getDetailFromYahoo(symbol: string): Promise<StockDetail> {
 
 // ─── Stocks ────────────────────────────────────────────────────────────────────
 async function getStocks(): Promise<StockListItem[]> {
-  return USE_BACKEND ? fetchStocksFromBackend() : getStocksFromYahoo()
+  return USE_BACKEND ? fetchStocksFromBackend() : Promise.resolve(getStocksFromYahoo())
 }
 async function getDetail(symbol: string, period = 'daily'): Promise<StockDetail> {
   return USE_BACKEND ? fetchDetailFromBackend(symbol, period) : getDetailFromYahoo(symbol)
@@ -133,7 +132,7 @@ export const watchlistApi = USE_BACKEND ? {
 } : {
   getAll: async (): Promise<WatchlistItem[]> => {
     if (_wl.length === 0) return []
-    const stocks = await getStocksFromYahoo()
+    const stocks = getStocksFromYahoo()
     return _wl.flatMap((sym, i) => {
       const s = stocks.find(x => x.symbol === sym)
       return s ? [{ id: i + 1, ...s, addedAt: new Date().toISOString() } as WatchlistItem] : []
@@ -141,7 +140,7 @@ export const watchlistApi = USE_BACKEND ? {
   },
   add: async (symbol: string): Promise<WatchlistItem> => {
     if (_wl.includes(symbol)) throw new Error('이미 추가된 종목입니다')
-    const stocks = await getStocksFromYahoo()
+    const stocks = getStocksFromYahoo()
     const s = stocks.find(x => x.symbol === symbol)
     if (!s) throw new Error('지원하지 않는 종목입니다')
     _wl.push(symbol)
@@ -167,7 +166,7 @@ export const portfolioApi = USE_BACKEND ? {
 } : {
   getAll: async (): Promise<PortfolioItem[]> => {
     if (_pf.length === 0) return []
-    const stocks = await getStocksFromYahoo()
+    const stocks = getStocksFromYahoo()
     return _pf.flatMap((p, i): PortfolioItem[] => {
       const s = stocks.find(x => x.symbol === p.symbol)
       if (!s) return []
@@ -180,7 +179,7 @@ export const portfolioApi = USE_BACKEND ? {
     })
   },
   addOrUpdate: async (data: { symbol: string; avgPrice: number; quantity: number }): Promise<PortfolioItem> => {
-    const stocks = await getStocksFromYahoo()
+    const stocks = getStocksFromYahoo()
     const s = stocks.find(x => x.symbol === data.symbol)
     if (!s) throw new Error('지원하지 않는 종목입니다')
     const idx = _pf.findIndex(p => p.symbol === data.symbol)

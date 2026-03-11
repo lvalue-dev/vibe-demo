@@ -1,9 +1,9 @@
 /**
  * 브라우저 측 Yahoo Finance 클라이언트 (GitHub Pages 개발계 전용)
  *
- * CORS 처리:
- *   1. 직접 fetch 시도 (간혹 Yahoo가 CORS 허용)
- *   2. 실패 시 corsproxy.io 경유 (무료 · 데모 목적)
+ * - 종목 목록(홈): 기준가 테이블 + 시드 기반 일별 변동 (Yahoo v7/quote는 브라우저에서 인증 차단됨)
+ * - 종목 상세:    Yahoo v8/finance/chart 직접 호출 (30일 OHLCV)
+ *                  CORS → 직접 fetch → corsproxy.io 순으로 시도
  *
  * 운영계(Oracle + Java)에서는 이 파일을 사용하지 않습니다.
  */
@@ -26,6 +26,77 @@ async function yfGet(path: string): Promise<any> {
   return r.json()
 }
 
+// ── 종목별 기준가 (대략적인 현재 시세 기준, 홈 화면 시드 기반 가격에 사용) ───
+// KRW: 원화, USD: 달러
+export const BASE_PRICES: Record<string, number> = {
+  // KOSPI
+  '005930.KS': 53000,    // 삼성전자
+  '000660.KS': 190000,   // SK하이닉스
+  '207940.KS': 1050000,  // 삼성바이오로직스
+  '005380.KS': 210000,   // 현대차
+  '373220.KS': 310000,   // LG에너지솔루션
+  '000270.KS': 97000,    // 기아
+  '005490.KS': 280000,   // POSCO홀딩스
+  '035420.KS': 175000,   // NAVER
+  '068270.KS': 175000,   // 셀트리온
+  '051910.KS': 250000,   // LG화학
+  '105560.KS': 92000,    // KB금융
+  '035720.KS': 38000,    // 카카오
+  '055550.KS': 46000,    // 신한지주
+  '086790.KS': 70000,    // 하나금융지주
+  '003550.KS': 80000,    // LG
+  '096770.KS': 90000,    // SK이노베이션
+  '034730.KS': 165000,   // SK
+  '000810.KS': 370000,   // 삼성화재
+  '009150.KS': 120000,   // 삼성전기
+  '003490.KS': 23000,    // 대한항공
+  // KOSDAQ
+  '247540.KQ': 150000,   // 에코프로비엠
+  '086520.KQ': 85000,    // 에코프로
+  '091990.KQ': 80000,    // 셀트리온헬스케어
+  '196170.KQ': 420000,   // 알테오젠
+  '041510.KQ': 75000,    // SM엔터테인먼트
+  '035900.KQ': 44000,    // JYP Ent.
+  '122870.KQ': 34000,    // 와이지엔터테인먼트
+  '263750.KQ': 23000,    // 펄어비스
+  '036570.KQ': 165000,   // NC소프트
+  '112040.KQ': 27000,    // 위메이드
+  // NASDAQ (USD)
+  'AAPL':  225,  'MSFT':  380,  'GOOGL': 165,
+  'AMZN':  200,  'META':  590,  'TSLA':  280,
+  'NVDA':  130,  'NFLX':  970,  'INTC':   22,
+  'AMD':   105,  'QCOM':  155,  'ADBE':  430,
+  'CRM':   280,  'ORCL':  165,  'CSCO':   58,
+  // NYSE (USD)
+  'JPM':   240,  'V':     330,  'WMT':    95,
+  'JNJ':   158,  'XOM':   110,  'BAC':    44,
+  'GS':    570,  'UNH':   490,  'PFE':    25,
+  'KO':     62,  'MCD':   290,  'DIS':   100,
+  'BA':    165,  'GM':     48,  'BABA':   80,
+}
+
+/** 일별 시드 기반 가격 (홈 화면 목록용, Yahoo API 차단 대비) */
+export function seedPrice(symbol: string, dailySeed: number): {
+  price: number; prevClose: number; changeRate: number; volume: number
+} {
+  const base = BASE_PRICES[symbol] ?? 100
+  // 심볼 고유 시드
+  const symseed = symbol.split('').reduce((a, c, i) => a + c.charCodeAt(0) * (i + 3), 0)
+  // xorshift 계열 난수
+  function r(n: number) {
+    let h = (n ^ 0x9e3779b9) >>> 0
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0
+    return ((h ^ (h >>> 16)) >>> 0) / 0x100000000
+  }
+  const dailyFactor = 0.93 + r(symseed + dailySeed * 1009) * 0.14  // ±7% 일별 변동
+  const price       = Math.round(base * dailyFactor)
+  const changeRate  = (r(symseed + dailySeed * 337) - 0.5) * 0.06  // ±3% 등락률
+  const prevClose   = Math.round(price / (1 + changeRate))
+  const volume      = Math.round((5e5 + r(symseed + dailySeed * 179) * 5e6) * (base > 1000 ? 0.01 : 1))
+  return { price, prevClose, changeRate, volume }
+}
+
 export interface YfQuote {
   symbol: string
   price: number
@@ -38,40 +109,6 @@ export interface YfCandle {
   time: string    // 'MM/DD'
   price: number
   volume: number
-}
-
-/**
- * 배치 현재가 조회 (홈 화면 종목 목록용)
- * v7/finance/quote 는 여러 심볼을 한 번에 처리
- */
-export async function yfBatchQuotes(symbols: string[]): Promise<Map<string, YfQuote>> {
-  const result = new Map<string, YfQuote>()
-  const BATCH = 25   // URL 길이 한계 고려
-
-  for (let i = 0; i < symbols.length; i += BATCH) {
-    const batch = symbols.slice(i, i + BATCH)
-    try {
-      const fields = 'regularMarketPrice,regularMarketPreviousClose,regularMarketVolume'
-      const data = await yfGet(
-        `/v7/finance/quote?symbols=${encodeURIComponent(batch.join(','))}&fields=${fields}`
-      )
-      const quotes: Record<string, number | string>[] = data?.quoteResponse?.result ?? []
-      for (const q of quotes) {
-        const price = (q.regularMarketPrice as number) ?? 0
-        const prevClose = (q.regularMarketPreviousClose as number) ?? price
-        result.set(q.symbol as string, {
-          symbol: q.symbol as string,
-          price,
-          prevClose,
-          changeRate: prevClose > 0 ? (price - prevClose) / prevClose : 0,
-          volume: (q.regularMarketVolume as number) ?? 0,
-        })
-      }
-    } catch {
-      // 배치 실패 시 건너뜀 (seed 기반 fallback 이 처리)
-    }
-  }
-  return result
 }
 
 /**
@@ -116,3 +153,4 @@ export async function yfChart(
 
   return { quote, candles: candles.slice(-days) }
 }
+

@@ -22,7 +22,13 @@ const SUGGESTED = [
   '삼성전자 지금 사도 될까?',
 ]
 
-const API_BASE = import.meta.env.VITE_API_URL || ''
+const API_BASE     = import.meta.env.VITE_API_URL || ''
+const USE_BACKEND  = !!import.meta.env.VITE_API_URL
+const GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY || ''
+const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${GEMINI_KEY}`
+const SYSTEM_PROMPT =
+  '당신은 StockGuide 주식 투자 AI 어시스턴트입니다. 한국 주식 초보자에게 쉽게 설명하세요. ' +
+  '규칙: 한국어로 250자 이내, 수치와 이유 포함, 투자 손실 위험 언급.'
 
 export default function StockChat() {
   const [open, setOpen] = useState(false)
@@ -50,32 +56,50 @@ export default function StockChat() {
     setLoading(true)
 
     let answer = ''
-    let cached = false
 
     try {
-      const res = await fetch(`${API_BASE}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
-      })
+      let res: Response
 
-      cached = res.headers.get('X-Cache') === 'HIT'
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: '서버 오류' }))
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          text: err.error ?? '오류가 발생했습니다.',
-        }])
-        return
+      if (USE_BACKEND) {
+        // ── 운영계: Java 백엔드 SSE ──────────────────────────────────────────
+        res = await fetch(`${API_BASE}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: '서버 오류' }))
+          setMessages(prev => [...prev, { role: 'assistant', text: err.error ?? '오류가 발생했습니다.' }])
+          return
+        }
+      } else {
+        // ── 개발계: Gemini REST API 직접 호출 ────────────────────────────────
+        if (!GEMINI_KEY) {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            text: 'AI 기능을 사용하려면 GitHub Secrets에 VITE_GEMINI_API_KEY를 등록하세요.\n(https://aistudio.google.com 에서 무료 발급)',
+          }])
+          return
+        }
+        res = await fetch(GEMINI_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: [{ parts: [{ text: question }], role: 'user' }],
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          setMessages(prev => [...prev, { role: 'assistant', text: `Gemini 오류: ${err?.error?.message ?? res.status}` }])
+          return
+        }
       }
 
-      // 스트리밍 읽기
+      // ── SSE 스트리밍 읽기 (백엔드 / Gemini 공통) ─────────────────────────
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
-
-      // 응답 메시지 자리 확보
-      setMessages(prev => [...prev, { role: 'assistant', text: '', cached }])
+      setMessages(prev => [...prev, { role: 'assistant', text: '' }])
 
       if (reader) {
         while (true) {
@@ -90,40 +114,28 @@ export default function StockChat() {
 
             try {
               const parsed = JSON.parse(payload)
-              if (parsed.error) {
-                setMessages(prev => {
-                  const updated = [...prev]
-                  updated[updated.length - 1] = {
-                    role: 'assistant',
-                    text: `오류: ${parsed.error}`,
-                  }
-                  return updated
-                })
+              // 백엔드 형식: { text } | { error }
+              // Gemini 형식: { candidates[0].content.parts[0].text }
+              const chunk: string =
+                parsed.text ??
+                parsed.candidates?.[0]?.content?.parts?.[0]?.text ??
+                ''
+              const errMsg: string = parsed.error ?? parsed.candidates?.[0]?.finishReason === 'ERROR' ? '오류' : ''
+
+              if (errMsg) {
+                setMessages(prev => { const u = [...prev]; u[u.length - 1] = { role: 'assistant', text: `오류: ${errMsg}` }; return u })
                 return
               }
-              if (parsed.text) {
-                answer += parsed.text
-                setMessages(prev => {
-                  const updated = [...prev]
-                  updated[updated.length - 1] = {
-                    role: 'assistant',
-                    text: answer,
-                    cached,
-                  }
-                  return updated
-                })
+              if (chunk) {
+                answer += chunk
+                setMessages(prev => { const u = [...prev]; u[u.length - 1] = { role: 'assistant', text: answer }; return u })
               }
-            } catch {
-              // JSON 파싱 실패 무시
-            }
+            } catch { /* JSON 파싱 실패 무시 */ }
           }
         }
       }
-    } catch (err) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: '연결 오류. 잠시 후 다시 시도하세요.',
-      }])
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', text: '연결 오류. 잠시 후 다시 시도하세요.' }])
     } finally {
       setLoading(false)
     }
