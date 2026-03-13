@@ -9,21 +9,35 @@
  */
 
 const YF = 'https://query1.finance.yahoo.com'
-const PROXY = 'https://corsproxy.io/?url='
+const YF2 = 'https://query2.finance.yahoo.com'
+const PROXIES = [
+  'https://corsproxy.io/?url=',
+  'https://api.allorigins.win/raw?url=',
+]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function yfGet(path: string): Promise<any> {
-  const url = `${YF}${path}`
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(5000) })
-    if (r.ok) return r.json()
-  } catch { /* CORS 차단이면 프록시로 재시도 */ }
+  // 1) query1 직접 시도
+  for (const base of [YF, YF2]) {
+    try {
+      const r = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(5000) })
+      if (r.ok) return await r.json()
+    } catch { /* CORS 차단 → 프록시로 */ }
+  }
 
-  const r = await fetch(`${PROXY}${encodeURIComponent(url)}`, {
-    signal: AbortSignal.timeout(12000),
-  })
-  if (!r.ok) throw new Error(`Yahoo Finance ${r.status}`)
-  return r.json()
+  // 2) CORS 프록시 순차 시도 (query1 → query2 × 각 프록시)
+  for (const proxy of PROXIES) {
+    for (const base of [YF, YF2]) {
+      try {
+        const r = await fetch(`${proxy}${encodeURIComponent(`${base}${path}`)}`, {
+          signal: AbortSignal.timeout(15000),
+        })
+        if (r.ok) return await r.json()
+      } catch { /* 다음 시도 */ }
+    }
+  }
+
+  throw new Error(`Yahoo Finance 요청 실패: ${path}`)
 }
 
 // ── 종목별 기준가 (대략적인 현재 시세 기준, 홈 화면 시드 기반 가격에 사용) ───

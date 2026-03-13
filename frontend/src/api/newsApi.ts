@@ -62,14 +62,15 @@ const GLOBAL_QUERIES = [
 async function fetchGlobalNews(): Promise<NewsArticle[]> {
   const articles: NewsArticle[] = []
 
-  await Promise.allSettled(
-    GLOBAL_QUERIES.map(async (q) => {
+  // 순차 fetch (프록시 레이트 리밋 방지)
+  for (const q of GLOBAL_QUERIES) {
+    try {
       const url = `${YF}/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=4&type=news&lang=en-US&region=US`
       const raw = await proxiedFetch(url)
-      if (!raw) return
+      if (!raw) continue
 
       const parsed = safeJson(raw)
-      if (!parsed) return
+      if (!parsed) continue
 
       // Yahoo Finance 응답 구조: 두 가지 경우 처리
       // 1) { news: [...] }  (최신)
@@ -99,8 +100,10 @@ async function fetchGlobalNews(): Promise<NewsArticle[]> {
           thumbnailUrl: n.thumbnail?.resolutions?.[0]?.url,
         })
       })
-    })
-  )
+    } catch { /* 개별 쿼리 실패 → 다음으로 */ }
+    // 각 쿼리 사이 300ms 대기
+    await new Promise(r => setTimeout(r, 300))
+  }
 
   // 중복 제거 (uuid 기준) + 최신순 정렬
   const seen = new Set<string>()
@@ -263,8 +266,11 @@ export async function fetchMarketNews(filter: NewsFilter = 'all'): Promise<NewsA
 
   let articles: NewsArticle[] = []
 
+  // 글로벌/국내 뉴스를 순차 fetch (프록시 레이트 리밋 방지)
   if (filter === 'global' || filter === 'all') {
     articles = [...articles, ...await fetchGlobalNews()]
+    // 국내 뉴스는 잠깐 대기 후 시작 (corsproxy.io 동시 요청 분산)
+    await new Promise(r => setTimeout(r, 500))
   }
   if (filter === 'korean' || filter === 'all') {
     articles = [...articles, ...await fetchKoreanNews()]
