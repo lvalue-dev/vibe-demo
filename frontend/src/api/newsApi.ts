@@ -9,42 +9,54 @@
  */
 import type { NewsArticle, SectorImpact } from '../types'
 
-const YF    = 'https://query1.finance.yahoo.com'
-const PROXY = 'https://corsproxy.io/?url='
+const YF      = 'https://query1.finance.yahoo.com'
+// CORS 프록시 순서대로 시도 (하나가 막히면 다음으로)
+const PROXIES = [
+  'https://corsproxy.io/?url=',
+  'https://api.allorigins.win/raw?url=',
+]
 
 const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
 
 // ── 뉴스 캐시 (1시간 TTL) ────────────────────────────────────────────────────
-const NEWS_TTL = 60 * 60 * 1000  // 1시간
+const NEWS_TTL = 60 * 60 * 1000
 interface CacheEntry { data: NewsArticle[]; fetchedAt: number }
 const cache = new Map<string, CacheEntry>()
 
-// ── CORS 우회 fetch ───────────────────────────────────────────────────────────
-async function proxiedFetch(url: string, isXml = false): Promise<string | null> {
-  // 직접 시도
+// ── CORS 우회 fetch (프록시 순차 시도) ───────────────────────────────────────
+async function proxiedFetch(url: string): Promise<string | null> {
+  // 1) 직접 시도 (CORS 허용 환경)
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(5000) })
-    if (r.ok) return isXml ? r.text() : r.text()
-  } catch { /* CORS 차단 → 프록시로 재시도 */ }
+    if (r.ok) return await r.text()   // ← await 필수 (try-catch 유지)
+  } catch { /* CORS 차단 → 프록시로 */ }
 
-  try {
-    const r = await fetch(`${PROXY}${encodeURIComponent(url)}`, {
-      signal: AbortSignal.timeout(12000),
-    })
-    if (r.ok) return r.text()
-  } catch { /* 실패 시 null 반환 */ }
+  // 2) 등록된 CORS 프록시를 순서대로 시도
+  for (const proxy of PROXIES) {
+    try {
+      const r = await fetch(`${proxy}${encodeURIComponent(url)}`, {
+        signal: AbortSignal.timeout(12000),
+      })
+      if (r.ok) return await r.text()
+    } catch { /* 다음 프록시로 */ }
+  }
 
   return null
 }
 
+// ── JSON 안전 파싱 ────────────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function safeJson(raw: string): any {
+  try { return JSON.parse(raw) } catch { return null }
+}
+
 // ── 글로벌 뉴스: Yahoo Finance search API ────────────────────────────────────
+// 쿼리를 3개로 축소해 프록시 레이트 리밋 방지
 const GLOBAL_QUERIES = [
-  'interest rate federal reserve',
-  'technology semiconductor AI',
-  'oil energy market',
-  'global economy inflation',
-  'Korea stock market',
+  'stock market economy fed interest rate',
+  'technology semiconductor AI chip',
+  'energy oil Korea global finance',
 ]
 
 async function fetchGlobalNews(): Promise<NewsArticle[]> {
@@ -52,23 +64,34 @@ async function fetchGlobalNews(): Promise<NewsArticle[]> {
 
   await Promise.allSettled(
     GLOBAL_QUERIES.map(async (q) => {
-      const url = `${YF}/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=3&lang=en-US&region=US`
+      const url = `${YF}/v1/finance/search?q=${encodeURIComponent(q)}&newsCount=4&type=news&lang=en-US&region=US`
       const raw = await proxiedFetch(url)
       if (!raw) return
 
+      const parsed = safeJson(raw)
+      if (!parsed) return
+
+      // Yahoo Finance 응답 구조: 두 가지 경우 처리
+      // 1) { news: [...] }  (최신)
+      // 2) { finance: { result: [{ news: [...] }] } }  (구버전)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const parsed: any = JSON.parse(raw)
-      const news = parsed?.news ?? []
+      const news: any[] =
+        parsed?.news ??
+        parsed?.finance?.result?.[0]?.news ??
+        []
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       news.forEach((n: any) => {
-        if (!n.title || !n.link) return
+        const title = n.title ?? ''
+        const link  = n.link ?? n.url ?? ''
+        if (!title || !link) return
+
         articles.push({
           id:          n.uuid ?? `yf-${Date.now()}-${Math.random()}`,
-          title:       n.title,
-          summary:     n.summary ?? n.title,
-          source:      n.publisher ?? 'Yahoo Finance',
-          url:         n.link,
+          title,
+          summary:     n.summary ?? n.description ?? title,
+          source:      n.publisher ?? n.source?.name ?? 'Yahoo Finance',
+          url:         link,
           publishedAt: n.providerPublishTime
             ? new Date(n.providerPublishTime * 1000).toISOString()
             : new Date().toISOString(),
@@ -79,62 +102,69 @@ async function fetchGlobalNews(): Promise<NewsArticle[]> {
     })
   )
 
-  // 중복 제거 (uuid 기준)
+  // 중복 제거 (uuid 기준) + 최신순 정렬
   const seen = new Set<string>()
-  return articles.filter(a => {
-    if (seen.has(a.id)) return false
-    seen.add(a.id)
-    return true
-  }).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+  return articles
+    .filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true })
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
 }
 
 // ── 국내 뉴스: RSS XML 파싱 ───────────────────────────────────────────────────
+// 2개로 축소 (가장 안정적인 피드만)
 const KOREAN_RSS_FEEDS = [
   { url: 'https://www.yonhapnewstv.co.kr/category/news/economy/feed/', source: '연합뉴스TV' },
   { url: 'https://www.hankyung.com/feed/economy',                       source: '한국경제' },
-  { url: 'https://rss.mk.co.kr/rss/30200030/',                          source: '매일경제' },
 ]
 
 function parseRssXml(xml: string, source: string): NewsArticle[] {
-  const parser = new DOMParser()
-  const doc    = parser.parseFromString(xml, 'application/xml')
-  const items  = Array.from(doc.querySelectorAll('item'))
+  try {
+    const parser = new DOMParser()
+    const doc    = parser.parseFromString(xml, 'application/xml')
 
-  return items.slice(0, 5).map((item): NewsArticle => {
-    const title   = item.querySelector('title')?.textContent?.trim() ?? '제목 없음'
-    const link    = item.querySelector('link')?.textContent?.trim()
-              ?? item.querySelector('guid')?.textContent?.trim() ?? '#'
-    const desc    = item.querySelector('description')?.textContent?.replace(/<[^>]*>/g, '').trim() ?? ''
-    const pubDate = item.querySelector('pubDate')?.textContent?.trim() ?? ''
+    // XML 파싱 에러 감지
+    if (doc.querySelector('parsererror')) return []
 
-    return {
-      id:          `rss-${source}-${link}`,
-      title,
-      summary:     desc.slice(0, 200),
-      source,
-      url:         link,
-      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
-      category:    'korean',
-    }
-  })
+    const items = Array.from(doc.querySelectorAll('item'))
+    if (items.length === 0) return []
+
+    return items.slice(0, 5).map((item): NewsArticle => {
+      const title   = item.querySelector('title')?.textContent?.trim() ?? '제목 없음'
+      const link    = item.querySelector('link')?.textContent?.trim()
+                ?? item.querySelector('guid')?.textContent?.trim() ?? '#'
+      const desc    = (item.querySelector('description')?.textContent ?? '')
+                        .replace(/<[^>]*>/g, '').trim()
+      const pubDate = item.querySelector('pubDate')?.textContent?.trim() ?? ''
+
+      return {
+        id:          `rss-${source}-${encodeURIComponent(link)}`,
+        title,
+        summary:     desc.slice(0, 200),
+        source,
+        url:         link,
+        publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+        category:    'korean',
+      }
+    })
+  } catch {
+    return []
+  }
 }
 
 async function fetchKoreanNews(): Promise<NewsArticle[]> {
   const results = await Promise.allSettled(
     KOREAN_RSS_FEEDS.map(async ({ url, source }) => {
-      const xml = await proxiedFetch(url, true)
+      const xml = await proxiedFetch(url)
       if (!xml) return []
       return parseRssXml(xml, source)
     })
   )
 
   return results
-    .flatMap(r => r.status === 'fulfilled' ? r.value : [])
+    .flatMap(r => r.status === 'fulfilled' ? (r.value ?? []) : [])
     .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
 }
 
 // ── Gemini 섹터 영향 분석 ─────────────────────────────────────────────────────
-// 우리 앱에 있는 대표 섹터
 const APP_SECTORS = [
   '반도체', 'IT/소프트웨어', '자동차/모빌리티', '바이오/헬스케어',
   '에너지/화학', '금융/은행', '엔터테인먼트', '이커머스/플랫폼',
@@ -144,7 +174,6 @@ const APP_SECTORS = [
 async function analyzeWithGemini(articles: NewsArticle[]): Promise<NewsArticle[]> {
   if (!GEMINI_KEY || articles.length === 0) return articles
 
-  // 배치 처리: 4개씩 묶어 분석 (토큰 절약)
   const batches: NewsArticle[][] = []
   for (let i = 0; i < articles.length; i += 4) {
     batches.push(articles.slice(i, i + 4))
@@ -154,9 +183,9 @@ async function analyzeWithGemini(articles: NewsArticle[]): Promise<NewsArticle[]
 
   await Promise.allSettled(
     batches.map(async (batch) => {
-      const articleList = batch.map((a, i) =>
-        `[${i + 1}] 제목: ${a.title}\n요약: ${a.summary.slice(0, 150)}`
-      ).join('\n\n')
+      const articleList = batch
+        .map((a, i) => `[${i + 1}] 제목: ${a.title}\n요약: ${a.summary.slice(0, 150)}`)
+        .join('\n\n')
 
       const prompt = `다음 뉴스 기사들이 한국 및 미국 주식 시장에 미칠 영향을 분석하세요.
 
@@ -195,16 +224,15 @@ impact는 해당 종목이 이 뉴스로 인해 긍정적("positive"), 부정적
         if (!res.ok) return
 
         const data = await res.json()
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+        const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 
-        // JSON 추출 (마크다운 코드블록 제거)
         const jsonMatch = text.match(/\[[\s\S]*\]/)
         if (!jsonMatch) return
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const parsed: any[] = JSON.parse(jsonMatch[0])
+        const parsedItems: any[] = JSON.parse(jsonMatch[0])
 
-        parsed.forEach((item) => {
+        parsedItems.forEach((item) => {
           const article = batch[item.index - 1]
           if (!article) return
           const idx = analyzed.findIndex(a => a.id === article.id)
@@ -236,17 +264,14 @@ export async function fetchMarketNews(filter: NewsFilter = 'all'): Promise<NewsA
   let articles: NewsArticle[] = []
 
   if (filter === 'global' || filter === 'all') {
-    const global = await fetchGlobalNews()
-    articles = [...articles, ...global]
+    articles = [...articles, ...await fetchGlobalNews()]
   }
   if (filter === 'korean' || filter === 'all') {
-    const korean = await fetchKoreanNews()
-    articles = [...articles, ...korean]
+    articles = [...articles, ...await fetchKoreanNews()]
   }
 
-  // Gemini 섹터 분석 (상위 12개만 — 토큰 절약)
-  const top = articles.slice(0, 12)
-  const rest = articles.slice(12)
+  const top      = articles.slice(0, 12)
+  const rest     = articles.slice(12)
   const analyzed = await analyzeWithGemini(top)
 
   const result = [...analyzed, ...rest]
@@ -256,7 +281,6 @@ export async function fetchMarketNews(filter: NewsFilter = 'all'): Promise<NewsA
   return result
 }
 
-/** 캐시 강제 초기화 (수동 새로고침) */
 export function clearNewsCache(): void {
   cache.clear()
 }

@@ -12,6 +12,7 @@ import ScoreBar from '../components/common/ScoreBar'
 import { useAuthStore } from '../store/authStore'
 import { formatChange, formatPriceWithCurrency, formatVolume, RECOMMENDATION_COLORS } from '../utils/format'
 import QuantTab from '../components/quant/QuantTab'
+import ErrorBoundary from '../components/common/ErrorBoundary'
 
 type Tab = 'price' | 'volume' | 'investor' | 'quant'
 type Period = 'daily' | 'weekly' | 'intraday'
@@ -257,11 +258,13 @@ export default function StockDetail() {
 
         {/* 퀀트 예측 탭 */}
         {tab === 'quant' && (
-          <QuantTab
-            chartData={stock.chartData}
-            currentPrice={stock.currentPrice}
-            market={stock.market}
-          />
+          <ErrorBoundary>
+            <QuantTab
+              chartData={stock.chartData}
+              currentPrice={stock.currentPrice}
+              market={stock.market}
+            />
+          </ErrorBoundary>
         )}
 
         {/* 투자자 동향 탭 */}
