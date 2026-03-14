@@ -44,7 +44,7 @@ public class StockController {
      * 프론트엔드 EventSource('/api/stocks/stream') 에서 구독.
      * 이벤트명: "price", 데이터: { symbol, price, priceChangeRate, volume }
      */
-    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @GetMapping(value = {"/stream", "/stream/sse"}, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<StockSseService.PriceUpdate>> stream() {
         return stockSseService.flux()
             .map(update -> ServerSentEvent.<StockSseService.PriceUpdate>builder()

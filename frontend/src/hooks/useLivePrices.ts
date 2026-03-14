@@ -21,7 +21,7 @@ export function useLivePrices(_symbols: string[] = []) {
     const apiOrigin = import.meta.env.VITE_API_URL ?? ''
     const es = new EventSource(`${apiOrigin}/api/stocks/stream/sse`)
 
-    es.onmessage = (e: MessageEvent) => {
+    const handlePrice = (e: MessageEvent) => {
       const update: PriceUpdate = JSON.parse(e.data)
       if (!update.symbol) return
       queryClient.setQueryData<StockListItem[]>(['stocks'], (prev) => {
@@ -38,6 +38,7 @@ export function useLivePrices(_symbols: string[] = []) {
         )
       })
     }
+    es.addEventListener('price', handlePrice)
 
     es.onerror = () => {
       // 브라우저가 자동 재연결 (EventSource 기본 동작)
